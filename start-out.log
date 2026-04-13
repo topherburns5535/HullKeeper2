@@ -1,0 +1,14 @@
+
+> hull-keeper@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.2 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.250:3000
+✓ Ready in 756ms
+
+ GET / 200 in 1233ms (next.js: 390ms, application-code: 843ms)
+ GET / 200 in 90ms (next.js: 5ms, application-code: 84ms)
+ GET / 200 in 127ms (next.js: 7ms, application-code: 119ms)
+ GET / 200 in 65ms (next.js: 4ms, application-code: 62ms)
+ GET / 200 in 152ms (next.js: 7ms, application-code: 145ms)
