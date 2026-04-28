@@ -1,13 +1,24 @@
-export type DebrisKind = "normal" | "heavy" | "corrosive" | "unstable" | "tank" | "splatter";
-export type DebrisVisualState = "flying" | "resting" | "exploding";
+export type DebrisKind = "normal" | "heavy" | "corrosive" | "tank" | "splatter";
+export type DebrisVisualState =
+  | "flying"
+  | "resting"
+  | "exploding"
+  | "rest_1"
+  | "rest_2"
+  | "rest_3"
+  | "rest_4";
 export type DebrisCleanupStage = 0 | 1 | 2 | 3;
+export type DebrisLandingVariant = "left" | "right" | "center";
+export type ShieldPoolVariant = "pool1" | "pool2";
 export type PickupKind = "shield" | "hull";
+export type PowerupKind = PickupKind | "nuke_reset" | "slow_reset";
+export type VacuumTransportDebrisSpriteKey = "tubeDebris1" | "tubeDebris2" | "tubeDebris3";
 export type AbilityKey = "slowTime" | "nuke";
 export type UpgradeKey = "power" | "range" | "tempo" | "ability" | "shield";
 export type DifficultyMode = "Easy" | "Normal" | "Hard";
 export type ToastTone = "info" | "reward" | "danger";
 export type DebrisBehavior = "drift" | "sticky" | "swift";
-export type BotKind = "shield" | "scrap" | "stabilizer" | "turret" | "rogue";
+export type BotKind = "shield" | "scrap" | "turret" | "rogue";
 export type EntrySide = "top" | "bottom" | "left" | "right";
 export type MilestoneModifierKey =
   | "shieldRegenBoost"
@@ -22,14 +33,36 @@ export interface Debris {
   kind: DebrisKind;
   isFragment?: boolean;
   isCorrosive: boolean;
+  scale: number;
+  visualFlipX: boolean;
+  visualRotation: number;
+  visualOffsetX: number;
+  visualOffsetY: number;
+  rogueTargetLockUntilMs?: number;
+  speedModifier: number;
   spriteFlying: string | null;
   spriteResting: string | null;
+  shieldRestingSprite: string | null;
+  shieldRestingSprites?: readonly string[];
+  shieldRestingAnimationSprites?: readonly string[];
+  shieldCleanupAnimationSprites?: readonly string[];
+  shieldStageAnimationSprites?: Partial<Record<DebrisVisualState, readonly string[]>>;
   spriteExploding: string | null;
   cleanupSprites: string[];
   cleanupProgress: number;
   cleanupStage: DebrisCleanupStage;
+  landingVariant: DebrisLandingVariant;
+  landingUsesShieldSettle: boolean;
+  shieldPoolTimerMs: number;
+  shieldPoolVariant: ShieldPoolVariant;
+  shieldPoolScaleJitter: number;
+  shieldPoolRotationDeg: number;
+  shieldPoolOpacityJitter: number;
+  shieldPoolPulseJitter: number;
   state: DebrisVisualState;
   stateTimerMs: number;
+  landingTimerMs: number;
+  landingDurationMs: number;
   x: number;
   targetY: number;
   hp: number;
@@ -51,7 +84,7 @@ export interface Pickup {
 
 export interface RecoveryPowerup {
   id: number;
-  kind: PickupKind;
+  kind: PowerupKind;
   x: number;
   y: number;
   velocityX: number;
@@ -59,7 +92,7 @@ export interface RecoveryPowerup {
   value: number;
   ageMs: number;
   lifeMs: number;
-  entrySide: EntrySide | "bot";
+  entrySide: EntrySide | "bot" | "debris";
 }
 
 export interface SupportBot {
@@ -75,6 +108,9 @@ export interface SupportBot {
   fireCooldownMs: number;
   payloadCooldownMs: number;
   wobblePhase: number;
+  animationFrameIndex: number;
+  animationTimer: number;
+  targetDebrisId?: number;
 }
 
 export interface IncomingBotWarning {
@@ -103,6 +139,46 @@ export interface EffectBurst {
   kind: "tap" | "reward" | "danger";
   ageMs: number;
   lifeMs: number;
+}
+
+export interface VacuumTransportDebris {
+  id: number;
+  spriteKey: VacuumTransportDebrisSpriteKey;
+  progress: number;
+  speed: number;
+  rotation: number;
+  scale: number;
+}
+
+export interface VacuumCaptureDebris {
+  id: number;
+  kind: DebrisKind;
+  spriteSrc: string | null;
+  startX: number;
+  startY: number;
+  targetX: number;
+  targetY: number;
+  ageMs: number;
+  durationMs: number;
+  rotation: number;
+  scale: number;
+  size: number;
+  flipX: boolean;
+}
+
+export interface FlybyDebris {
+  id: number;
+  kind: DebrisKind;
+  spriteSrc: string | null;
+  scale: number;
+  isFragment?: boolean;
+  x: number;
+  y: number;
+  velocityX: number;
+  velocityY: number;
+  rotation: number;
+  rotationSpeed: number;
+  flipX: boolean;
 }
 
 export interface ToastState {
@@ -159,16 +235,23 @@ export interface GameState {
   debris: Debris[];
   pickups: Pickup[];
   powerups: RecoveryPowerup[];
+  capturedDebris: VacuumCaptureDebris[];
+  transportDebris: VacuumTransportDebris[];
+  flybyDebris: FlybyDebris[];
   activeBot?: SupportBot;
   incomingBotWarning?: IncomingBotWarning;
+  activeRogueBot?: SupportBot;
+  incomingRogueBotWarning?: IncomingBotWarning;
   botShots: BotShot[];
   objectives: Objective[];
   effects: EffectBurst[];
   abilities: Record<AbilityKey, AbilityState>;
   upgrades: Record<UpgradeKey, number>;
   slowTimeMs: number;
+  postSlowRecoveryMs: number;
   nukeFlashMs: number;
   postNukeSlowMs: number;
+  debrisSpeedMultiplier: number;
   clearRecoveryMs: number;
   comboCount: number;
   comboTimerMs: number;
@@ -189,6 +272,9 @@ export interface GameState {
   nextDebrisId: number;
   nextPickupId: number;
   nextPowerupId: number;
+  nextCapturedDebrisId: number;
+  nextTransportDebrisId: number;
+  nextFlybyDebrisId: number;
   nextBotShotId: number;
   nextEffectId: number;
   nextObjectiveId: number;
@@ -197,6 +283,8 @@ export interface GameState {
   heavyClears: number;
   dangerousClears: number;
   lastHullDamageAt: number;
+  lastResetPowerupSpawnAt: number;
+  flybySpawnCooldownMs: number;
 }
 
 export type GameAction =

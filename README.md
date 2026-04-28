@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HullKeeper
 
-## Getting Started
+HullKeeper is a mobile-friendly arcade survival game built with Next.js, React, and TypeScript. You steer a vacuum head across the board, collect falling debris, manage shield and hull pressure, and use abilities like Slow and Nuke to survive increasingly crowded waves.
 
-First, run the development server:
+## Status
+
+HullKeeper is in active development. The core gameplay loop, debris variants, support bots, powerups, vacuum transport visuals, and verification script are all present, but the project should still be treated as an evolving game rather than a final release.
+
+## Tech Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS 4
+
+## Install
+
+```bash
+npm install
+```
+
+## Run Locally
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+```
 
-## Learn More
+## Available Scripts
 
-To learn more about Next.js, take a look at the following resources:
+- `npm run dev` - start the local development server
+- `npm run build` - create a production build
+- `npm run start` - serve the production build
+- `npm run lint` - run ESLint
+- `npm run verify:game` - run the custom gameplay verification script
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Controls
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Drag your mouse or finger across the board to move the vacuum head.
+- Keep debris from settling on the hull for too long.
+- Tap the bottom ability buttons to trigger `Slow` or `Nuke` when they are ready.
+- Choose upgrades between level-ups to improve range, power, tempo, abilities, and shield recovery.
 
-## Deploy on Vercel
+## Asset Notes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Main gameplay art lives in `public/assets`.
+- Debris art lives in `public/assets/debris`.
+- Menu backgrounds and custom button art live in `public/assets/ui`.
+- Vacuum, transport, and shield-contact visuals live in `public/assets/vacuum`.
+- Bot sprites live in `public/assets/bots`.
+- There is currently no `public/assets/backgrounds` folder; the menu background is stored under `public/assets/ui`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project Structure
+
+- `app` - Next.js app entrypoints
+- `components` - gameplay UI and rendering
+- `lib/game` - game state, reducers, helpers, and tuning
+- `scripts` - project verification scripts
+
+## Publishing Notes
+
+- Do not commit `node_modules`, `.next`, local logs, or temporary folders.
+- Review `next.config.ts` before publishing if you do not want local dev origins committed.
+- Run `npm run lint`, `npm run verify:game`, and `npm run build` before pushing changes.

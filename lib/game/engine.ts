@@ -4,11 +4,14 @@ import type {
   BotShot,
   Debris,
   DebrisCleanupStage,
+  DebrisLandingVariant,
   DebrisBehavior,
   DebrisKind,
   DebrisVisualState,
   DifficultyMode,
+  EntrySide,
   EffectBurst,
+  FlybyDebris,
   GameAction,
   GameState,
   IncomingBotWarning,
@@ -18,22 +21,28 @@ import type {
   ObjectiveKind,
   Pickup,
   PickupKind,
+  PowerupKind,
   RecoveryPowerup,
+  ShieldPoolVariant,
   SupportBot,
   ToastTone,
   UpgradeKey,
+  VacuumCaptureDebris,
+  VacuumTransportDebrisSpriteKey,
 } from "@/lib/game/types";
+import { getVacuumSuctionPoint } from "@/lib/game/vacuum";
 
 const MAX_SHIELD = 100;
 const MAX_HULL = 120;
 const OBJECTIVE_REPLACE_DELAY = 1400;
 const PASSIVE_INCOME_INTERVAL = 12000;
-const BASE_VACUUM_POWER = 4.1;
+const BASE_VACUUM_POWER = 6.0;
 const BASE_VACUUM_RANGE = 10.5;
 const MAX_VACUUM_RANGE = 17.2;
-const BASE_SPAWN_INTERVAL_S = 1.85;
+const VACUUM_STRENGTH_MULTIPLIER = 2.0;
+const BASE_SPAWN_INTERVAL_S = 1.8;
 const MAX_SPAWN_COUNT = 4;
-const MAX_TARGET_ACTIVE_DEBRIS = 20;
+const MAX_TARGET_ACTIVE_DEBRIS = 21;
 const MAX_BURST_SPAWN_COUNT = 7;
 const BASE_REGEN_DELAY_MS = 850;
 const UPGRADE_CHOICE_COUNT = 3;
@@ -49,23 +58,72 @@ const MOVING_POWERUP_RESPAWN_RANGE_MS = 10000;
 const MOVING_POWERUP_RETRY_MIN_MS = 8000;
 const MOVING_POWERUP_RETRY_RANGE_MS = 6000;
 const MOVING_POWERUP_SPEED = 42;
+const DEBRIS_RESET_POWERUP_SPEED = 18;
+const POWERUP_DIRECTION_VARIANCE_RAD = 0.24;
+const CENTER_POWERUP_DIRECTION_VARIANCE_RAD = 0.16;
+const RESTING_DAMAGE_SCALE_EXPONENT = 1.18;
+const RESTING_DAMAGE_SCALE_FLOOR = 0.2;
+const DEFAULT_DEBRIS_LANDING_DURATION_MS = 220;
+const HEAVY_DEBRIS_LANDING_DURATION_MS = 200;
+const TANK_DEBRIS_LANDING_DURATION_MS = 190;
+const SHIELD_NEW_POOL_EFFECT_DURATION_MS = 900;
+const DEBRIS_RESET_POWERUP_LIFE_MS = 6800;
+const DEBRIS_RESET_POWERUP_DROP_BASE_CHANCE = 0.05;
+const DEBRIS_RESET_POWERUP_DROP_MAX_CHANCE = 0.08;
+const DEBRIS_RESET_POWERUP_BAD_LUCK_START_MS = 18000;
+const DEBRIS_RESET_POWERUP_BAD_LUCK_RAMP_MS = 12000;
+const DEBRIS_RESET_POWERUP_BAD_LUCK_MAX_BONUS = 0.02;
+const DEBRIS_RESET_POWERUP_MAX_CHANCE_WITH_BAD_LUCK = 0.095;
+const RESET_POWERUP_MIN_INTERVAL_MS = 2200;
+const MAX_ACTIVE_RESET_POWERUPS = 2;
 const MOVING_POWERUP_SHIELD_VALUE = 50;
 const MOVING_POWERUP_HULL_VALUE = 25;
 const BOT_POWERUP_DROP_CHANCE = 0.48;
-const BOT_RESPAWN_MIN_MS = 20000;
-const BOT_RESPAWN_RANGE_MS = 15000;
-const BOT_START_COOLDOWN_MS = 18000;
+const BOT_RESPAWN_MIN_MS = 19000;
+const BOT_RESPAWN_RANGE_MS = 14500;
+const BOT_START_COOLDOWN_MS = 17000;
 const BOT_WARNING_MS = 2300;
 const ROGUE_BOT_MIN_LEVEL = 12;
-const ROGUE_BOT_RESPAWN_MIN_MS = 16000;
-const ROGUE_BOT_RESPAWN_RANGE_MS = 6000;
-const ROGUE_BOT_START_COOLDOWN_MS = 11000;
-const ROGUE_BOT_SPIT_MIN_MS = 1100;
-const ROGUE_BOT_SPIT_RANGE_MS = 500;
-const ROGUE_BOT_BLAST_RADIUS = 18;
-const POST_NUKE_SLOW_DURATION_MS = 3200;
-const POST_NUKE_SLOW_START_MULTIPLIER = 0.68;
-const SPLATTER_DELAY_MS = 850;
+const ROGUE_BOT_RESPAWN_MIN_MS = 11500;
+const ROGUE_BOT_RESPAWN_RANGE_MS = 4500;
+const ROGUE_BOT_START_COOLDOWN_MS = 8000;
+const ROGUE_BOT_ACTION_MIN_MS = 2200;
+const ROGUE_BOT_ACTION_RANGE_MS = 1400;
+const ROGUE_BOT_TARGET_RANGE = 34;
+const ROGUE_BOT_ACTION_RADIUS = 6.5;
+const ROGUE_BOT_MOVE_SPEED = 19;
+const ROGUE_BOT_TARGET_VARIANCE_CHANCE = 0.16;
+const ROGUE_BOT_CORROSIVE_REPLACEMENT_CHANCE = 0.16;
+const ROGUE_BOT_REPLACEMENT_LOCK_MS = 2800;
+const VACUUM_TRANSPORT_DEBRIS_BASE_SPEED = 1.15;
+const VACUUM_TRANSPORT_DEBRIS_MAX_ROTATION = 10;
+const VACUUM_TRANSPORT_DEBRIS_START_PROGRESS = 0.02;
+const MAX_ACTIVE_VACUUM_TRANSPORT_DEBRIS = 18;
+const VACUUM_CAPTURE_BASE_DURATION_MS = 95;
+const MAX_ACTIVE_VACUUM_CAPTURE_DEBRIS = 10;
+const FLYBY_DEBRIS_SPAWN_DELAY_MIN_MS = 2400;
+const FLYBY_DEBRIS_SPAWN_DELAY_RANGE_MS = 2600;
+const FLYBY_DEBRIS_SCALE_MIN = 0.35;
+const FLYBY_DEBRIS_SCALE_MAX = 0.65;
+const FLYBY_DEBRIS_SPEED_MIN = 24;
+const FLYBY_DEBRIS_SPEED_MAX = 36;
+const FLYBY_DEBRIS_ROTATION_SPEED_MIN = 10;
+const FLYBY_DEBRIS_ROTATION_SPEED_MAX = 24;
+const FLYBY_DEBRIS_DESPAWN_MARGIN = 16;
+const RARE_EARLY_SPECIAL_DEBRIS_UNLOCK_LEVEL = 5;
+const RARE_EARLY_SPECIAL_DEBRIS_CHANCE = 0.01;
+const POST_EFFECT_RECOVERY_HOLD_MS = 700;
+const POST_EFFECT_RECOVERY_RAMP_MS = 1500;
+const POST_EFFECT_RECOVERY_DURATION_MS =
+  POST_EFFECT_RECOVERY_HOLD_MS + POST_EFFECT_RECOVERY_RAMP_MS;
+const POST_NUKE_SLOW_DURATION_MS = POST_EFFECT_RECOVERY_DURATION_MS;
+const POST_NUKE_SLOW_START_MULTIPLIER = 0.52;
+const DEBRIS_MOVEMENT_MULTIPLIER_STEP_MS = 24000;
+const DEBRIS_MOVEMENT_MULTIPLIER_STEP = 0.045;
+const DEBRIS_MOVEMENT_MULTIPLIER_MAX = 2;
+const DEBRIS_MIN_BASE_SPEED = 0.6;
+const SPAWN_PRESSURE_INTERVAL_MULTIPLIER = 0.88;
+const SPLATTER_DELAY_MS = 1100;
 const SPLATTER_EXPLOSION_DURATION_MS = 220;
 const SPLATTER_CORROSIVE_SPAWN_COUNT = 4;
 const CORROSIVE_DEBRIS_FLYING_SPRITE = "/assets/debris/CorrosiveDebris.png";
@@ -73,37 +131,224 @@ const CORROSIVE_DEBRIS_RESTING_SPRITE = "/assets/debris/CorrosiveDebris_Resting.
 const CORROSIVE_RESTING_DAMAGE_MULTIPLIER = 0.2;
 const HEAVY_DEBRIS_FLYING_SPRITE = "/assets/debris/LargeDebris.png";
 const HEAVY_DEBRIS_RESTING_SPRITE = "/assets/debris/LargeDebris_Resting1.png";
+const HEAVY_DEBRIS_SHIELD_RESTING_ANIMATION_SPRITES = [
+  "/assets/debris/LargeDebris_Resting1_ShieldResting_1.png",
+  "/assets/debris/LargeDebris_Resting1_ShieldResting_2.png",
+  "/assets/debris/LargeDebris_Resting1_ShieldResting_3.png",
+] as const;
+const HEAVY_DEBRIS_SHIELD_CLEANING_ANIMATION_SPRITES = [
+  "/assets/debris/LargeDebris_Cleaning_ShieldResting_1.png",
+  "/assets/debris/LargeDebris_Cleaning_ShieldResting_2.png",
+  "/assets/debris/LargeDebris_Cleaning_ShieldResting_3.png",
+] as const;
 const HEAVY_DEBRIS_CLEANUP_SPRITES = [
-  "/assets/debris/LargeDebris_cleaning.png",
+  "/assets/debris/LargeDebris_Cleaning.png",
   "/assets/debris/CommonDebris3_Resting.png",
   "/assets/debris/CommonDebris3_Resting.png",
 ] as const;
+const TANK_DEBRIS_FLYING_SPRITE = "/assets/debris/TankDebris.png";
+const TANK_DEBRIS_RESTING_SPRITE = "/assets/debris/TankDebris_Resting.png";
+const TANK_DEBRIS_RESTING_STAGE_SPRITES = [
+  "/assets/debris/TankDebris_Resting2.png",
+  "/assets/debris/TankDebris_Resting3.png",
+  "/assets/debris/TankDebris_Resting4.png",
+] as const;
+const TANK_DEBRIS_SHIELD_RESTING_STAGE_SPRITES: Partial<
+  Record<DebrisVisualState, readonly string[]>
+> = {
+  rest_1: [
+    "/assets/debris/TankDebris_Resting_ShieldResting_1.png",
+    "/assets/debris/TankDebris_Resting_ShieldResting_2.png",
+    "/assets/debris/TankDebris_Resting_ShieldResting_3.png",
+  ],
+  rest_2: [
+    "/assets/debris/TankDebris_Resting2_ShieldResting_1.png",
+    "/assets/debris/TankDebris_Resting2_ShieldResting_2.png",
+    "/assets/debris/TankDebris_Resting2_ShieldResting_3.png",
+  ],
+  rest_3: [
+    "/assets/debris/TankDebris_Resting3_ShieldResting_1.png",
+    "/assets/debris/TankDebris_Resting3_ShieldResting_2.png",
+    "/assets/debris/TankDebris_Resting3_ShieldResting_3.png",
+  ],
+  rest_4: [
+    "/assets/debris/TankDebris_Resting4_ShieldResting_1.png",
+    "/assets/debris/TankDebris_Resting4_ShieldResting_2.png",
+    "/assets/debris/TankDebris_Resting4_ShieldResting_3.png",
+  ],
+};
 const SPLATTER_DEBRIS_FLYING_SPRITE = "/assets/debris/SplatterDebris.png";
 const SPLATTER_DEBRIS_RESTING_SPRITE = "/assets/debris/SplatterDebris_Resting.png";
 const SPLATTER_DEBRIS_EXPLOSION_SPRITE = "/assets/effects/SplatterDebris_Resting2.png";
 const SPLATTER_DEBRIS_VARIANT_TWO_FLYING_SPRITE = "/assets/debris/SplatterDebris2.png";
 const SPLATTER_DEBRIS_VARIANT_TWO_RESTING_SPRITE = "/assets/debris/SplatterDebris2_Resting.png";
 const SPLATTER_DEBRIS_VARIANT_TWO_EXPLOSION_SPRITE = "/assets/debris/SplatterDebris2_Resting2.png";
+const SPLATTER_DEBRIS_SHIELD_RESTING_ANIMATION_SPRITES = [
+  "/assets/debris/SplatterDebris_Resting_ShieldResting_1.png",
+  "/assets/debris/SplatterDebris_Resting_ShieldResting_2.png",
+  "/assets/debris/SplatterDebris_Resting_ShieldResting_3.png",
+] as const;
+const SPLATTER_DEBRIS_VARIANT_TWO_SHIELD_RESTING_ANIMATION_SPRITES = [
+  "/assets/debris/SplatterDebris2_Resting_ShieldResting_1.png",
+  "/assets/debris/SplatterDebris2_Resting_ShieldResting_2.png",
+  "/assets/debris/SplatterDebris2_Resting_ShieldResting_3.png",
+] as const;
+const BOT_SPRITE_FRAME_COUNT = 3;
+const DEFAULT_BOT_ANIMATION_FRAME_DURATION_MS = 130;
+
+const DEBRIS_BASE_SPEED: Record<DebrisKind, number> = {
+  normal: 0.94,
+  corrosive: 0.87,
+  splatter: 0.98,
+  heavy: 0.75,
+  tank: 0.68,
+};
 
 type DebrisSpriteVariant = {
+  variantId?: string;
   spriteFlying: string | null;
   spriteResting: string | null;
+  shieldRestingSprite?: string | null;
+  shieldRestingSprites?: readonly string[];
+  shieldRestingAnimationSprites?: readonly string[];
+  shieldCleanupAnimationSprites?: readonly string[];
+  shieldStageAnimationSprites?: Partial<Record<DebrisVisualState, readonly string[]>>;
   spriteExploding?: string | null;
   cleanupSprites?: readonly string[];
 };
 
+type DebrisVisualVariation = {
+  visualFlipX: boolean;
+  visualRotation: number;
+  visualOffsetX: number;
+  visualOffsetY: number;
+};
+
+type DebrisVisualVariationPreset = DebrisVisualVariation;
+
+export type DebrisGuideSprite = {
+  key: string;
+  src: string | null;
+  label: string;
+};
+
+type DebrisSalvageRange = {
+  min: number;
+  max: number;
+};
+
+type DebrisSalvageConfig = {
+  range: DebrisSalvageRange;
+  fragmentScale: number;
+};
+
+const DEBRIS_VISUAL_VARIATION_PRESETS: Record<
+  DebrisKind,
+  readonly DebrisVisualVariationPreset[]
+> = {
+  normal: [
+    { visualFlipX: false, visualRotation: -10, visualOffsetX: -4, visualOffsetY: -1 },
+    { visualFlipX: true, visualRotation: -6, visualOffsetX: -2, visualOffsetY: 2 },
+    { visualFlipX: false, visualRotation: -2, visualOffsetX: 0, visualOffsetY: -3 },
+    { visualFlipX: true, visualRotation: 4, visualOffsetX: 2, visualOffsetY: 1 },
+    { visualFlipX: false, visualRotation: 8, visualOffsetX: 4, visualOffsetY: 3 },
+    { visualFlipX: true, visualRotation: 10, visualOffsetX: -3, visualOffsetY: -2 },
+  ],
+  corrosive: [
+    { visualFlipX: true, visualRotation: -10, visualOffsetX: -4, visualOffsetY: 0 },
+    { visualFlipX: false, visualRotation: -5, visualOffsetX: -1, visualOffsetY: 3 },
+    { visualFlipX: true, visualRotation: -1, visualOffsetX: 2, visualOffsetY: -3 },
+    { visualFlipX: false, visualRotation: 5, visualOffsetX: 4, visualOffsetY: 2 },
+    { visualFlipX: true, visualRotation: 8, visualOffsetX: -2, visualOffsetY: 1 },
+    { visualFlipX: false, visualRotation: 10, visualOffsetX: 1, visualOffsetY: -2 },
+  ],
+  splatter: [
+    { visualFlipX: false, visualRotation: -9, visualOffsetX: -4, visualOffsetY: 1 },
+    { visualFlipX: true, visualRotation: -5, visualOffsetX: -2, visualOffsetY: 3 },
+    { visualFlipX: false, visualRotation: 0, visualOffsetX: 0, visualOffsetY: -3 },
+    { visualFlipX: true, visualRotation: 4, visualOffsetX: 3, visualOffsetY: 0 },
+    { visualFlipX: false, visualRotation: 7, visualOffsetX: 4, visualOffsetY: 2 },
+    { visualFlipX: true, visualRotation: 9, visualOffsetX: -3, visualOffsetY: -2 },
+  ],
+  heavy: [
+    { visualFlipX: false, visualRotation: -7, visualOffsetX: -3, visualOffsetY: -1 },
+    { visualFlipX: true, visualRotation: -4, visualOffsetX: -2, visualOffsetY: 2 },
+    { visualFlipX: false, visualRotation: -1, visualOffsetX: 0, visualOffsetY: -3 },
+    { visualFlipX: true, visualRotation: 3, visualOffsetX: 2, visualOffsetY: 1 },
+    { visualFlipX: false, visualRotation: 5, visualOffsetX: 3, visualOffsetY: 2 },
+    { visualFlipX: true, visualRotation: 7, visualOffsetX: -2, visualOffsetY: -2 },
+  ],
+  tank: [
+    { visualFlipX: false, visualRotation: -5, visualOffsetX: -2, visualOffsetY: 0 },
+    { visualFlipX: true, visualRotation: -3, visualOffsetX: -1, visualOffsetY: 2 },
+    { visualFlipX: false, visualRotation: -1, visualOffsetX: 0, visualOffsetY: -2 },
+    { visualFlipX: true, visualRotation: 2, visualOffsetX: 1, visualOffsetY: 1 },
+    { visualFlipX: false, visualRotation: 4, visualOffsetX: 2, visualOffsetY: 2 },
+    { visualFlipX: true, visualRotation: 5, visualOffsetX: -1, visualOffsetY: -1 },
+  ],
+};
+
+const DEBRIS_SCALE_OPTIONS = [1, 1.1, 1.3] as const;
+const DEBRIS_SCALE_WEIGHTS: Record<DebrisKind, readonly number[]> = {
+  normal: [0.5, 0.3, 0.2],
+  corrosive: [0.5, 0.3, 0.2],
+  splatter: [0.45, 0.35, 0.2],
+  heavy: [0.35, 0.4, 0.25],
+  tank: [0.2, 0.45, 0.35],
+};
+
+const COMMON_DEBRIS_ONE_SHIELD_RESTING_SPRITES = [
+  "/assets/debris/CommonDebrisShieldResting1.png",
+  "/assets/debris/CommonDebrisShieldResting2.png",
+  "/assets/debris/CommonDebrisShieldResting3.png",
+] as const;
+
+const COMMON_DEBRIS_THREE_SHIELD_RESTING_ANIMATION_SPRITES = [
+  "/assets/debris/CommonDebris3_Resting_Shield1.png",
+  "/assets/debris/CommonDebris3_Resting_Shield2.png",
+  "/assets/debris/CommonDebris3_Resting_Shield3.png",
+] as const;
+
+const CRASHED_DEBRIS_SHIELD_RESTING_ANIMATION_SPRITES = [
+  "/assets/debris/CrashedDebris_ShieldResting_1.png",
+  "/assets/debris/CrashedDebris_ShieldResting_2.png",
+  "/assets/debris/CrashedDebris_ShieldResting_3.png",
+] as const;
+
+const CORROSIVE_DEBRIS_SHIELD_RESTING_SPRITES = [
+  "/assets/debris/CorrosiveDebris_RestingShield1.png",
+  "/assets/debris/CorrosiveDebris_RestingShield2.png",
+  "/assets/debris/CorrosiveDebris_RestingShield3.png",
+] as const;
+
+const FLYBY_DEBRIS_SPRITES = [
+  { kind: "normal", spriteSrc: "/assets/debris/CommonDebris1.png" },
+  { kind: "normal", spriteSrc: "/assets/debris/CommonDebris3.png" },
+  { kind: "corrosive", spriteSrc: CORROSIVE_DEBRIS_FLYING_SPRITE },
+  { kind: "splatter", spriteSrc: SPLATTER_DEBRIS_FLYING_SPRITE },
+  { kind: "splatter", spriteSrc: SPLATTER_DEBRIS_VARIANT_TWO_FLYING_SPRITE },
+  { kind: "heavy", spriteSrc: HEAVY_DEBRIS_FLYING_SPRITE },
+  { kind: "tank", spriteSrc: TANK_DEBRIS_FLYING_SPRITE },
+] as const satisfies readonly { kind: DebrisKind; spriteSrc: string }[];
+
 export const NORMAL_DEBRIS_VARIANTS: DebrisSpriteVariant[] = [
   {
-    spriteFlying: "/assets/debris/common/CommonDebris1.png",
-    spriteResting: "/assets/debris/common/CommonDebris1_Resting.png",
+    variantId: "commonDebris1",
+    spriteFlying: "/assets/debris/CommonDebris1.png",
+    spriteResting: "/assets/debris/CommonDebris1_Resting.png",
+    shieldRestingAnimationSprites: COMMON_DEBRIS_ONE_SHIELD_RESTING_SPRITES,
   },
   {
+    variantId: "commonDebris2",
     spriteFlying: "/assets/debris/CorrosiveDebris.png",
     spriteResting: "/assets/debris/CrashedDebris.png",
+    shieldRestingAnimationSprites: CRASHED_DEBRIS_SHIELD_RESTING_ANIMATION_SPRITES,
   },
   {
+    variantId: "commonDebris3",
     spriteFlying: "/assets/debris/CommonDebris3.png",
     spriteResting: "/assets/debris/CommonDebris3_Resting.png",
+    shieldRestingAnimationSprites: COMMON_DEBRIS_THREE_SHIELD_RESTING_ANIMATION_SPRITES,
   },
 ];
 
@@ -111,20 +356,62 @@ export const SPLATTER_DEBRIS_VARIANTS: DebrisSpriteVariant[] = [
   {
     spriteFlying: SPLATTER_DEBRIS_FLYING_SPRITE,
     spriteResting: SPLATTER_DEBRIS_RESTING_SPRITE,
+    shieldRestingAnimationSprites: SPLATTER_DEBRIS_SHIELD_RESTING_ANIMATION_SPRITES,
     spriteExploding: SPLATTER_DEBRIS_EXPLOSION_SPRITE,
   },
   {
     spriteFlying: SPLATTER_DEBRIS_VARIANT_TWO_FLYING_SPRITE,
     spriteResting: SPLATTER_DEBRIS_VARIANT_TWO_RESTING_SPRITE,
+    shieldRestingAnimationSprites: SPLATTER_DEBRIS_VARIANT_TWO_SHIELD_RESTING_ANIMATION_SPRITES,
     spriteExploding: SPLATTER_DEBRIS_VARIANT_TWO_EXPLOSION_SPRITE,
   },
 ];
+
+const DEBRIS_SALVAGE_CONFIG: Record<DebrisKind, DebrisSalvageConfig> = {
+  normal: {
+    range: { min: 5, max: 20 },
+    fragmentScale: 0.45,
+  },
+  corrosive: {
+    range: { min: 10, max: 30 },
+    fragmentScale: 0.85,
+  },
+  splatter: {
+    range: { min: 8, max: 18 },
+    fragmentScale: 1,
+  },
+  heavy: {
+    range: { min: 25, max: 60 },
+    fragmentScale: 0.45,
+  },
+  tank: {
+    range: { min: 25, max: 60 },
+    fragmentScale: 0.45,
+  },
+};
+
+const RARE_SALVAGE_BONUS_CHANCE = 0.07;
+const RARE_SALVAGE_BONUS_MIN = 1.5;
+const RARE_SALVAGE_BONUS_MAX = 1.85;
+const RARE_SALVAGE_MAX_MULTIPLIER = 1.3;
+const LATE_GAME_SALVAGE_MAX_MULTIPLIER = 1.12;
+const DEBRIS_KIND_SALVAGE_SEEDS: Record<DebrisKind, number> = {
+  normal: 0x13579bdf,
+  corrosive: 0x2468ace1,
+  splatter: 0x55aa10ef,
+  heavy: 0x10293847,
+  tank: 0x89abcdef,
+};
 
 const DEBRIS_SPRITE_SETS: Record<
   DebrisKind,
   {
     flying: string | null;
     resting: string | null;
+    shieldRestingSprites?: readonly string[];
+    shieldRestingAnimationSprites?: readonly string[];
+    shieldCleanupAnimationSprites?: readonly string[];
+    shieldStageAnimationSprites?: Partial<Record<DebrisVisualState, readonly string[]>>;
     exploding: string | null;
     cleanupSprites: readonly string[];
   }
@@ -138,26 +425,24 @@ const DEBRIS_SPRITE_SETS: Record<
   heavy: {
     flying: HEAVY_DEBRIS_FLYING_SPRITE,
     resting: HEAVY_DEBRIS_RESTING_SPRITE,
+    shieldRestingAnimationSprites: HEAVY_DEBRIS_SHIELD_RESTING_ANIMATION_SPRITES,
+    shieldCleanupAnimationSprites: HEAVY_DEBRIS_SHIELD_CLEANING_ANIMATION_SPRITES,
     exploding: null,
     cleanupSprites: HEAVY_DEBRIS_CLEANUP_SPRITES,
   },
   corrosive: {
     flying: CORROSIVE_DEBRIS_FLYING_SPRITE,
     resting: CORROSIVE_DEBRIS_RESTING_SPRITE,
-    exploding: null,
-    cleanupSprites: [],
-  },
-  unstable: {
-    flying: null,
-    resting: null,
+    shieldRestingSprites: CORROSIVE_DEBRIS_SHIELD_RESTING_SPRITES,
     exploding: null,
     cleanupSprites: [],
   },
   tank: {
-    flying: null,
-    resting: null,
+    flying: TANK_DEBRIS_FLYING_SPRITE,
+    resting: TANK_DEBRIS_RESTING_SPRITE,
+    shieldStageAnimationSprites: TANK_DEBRIS_SHIELD_RESTING_STAGE_SPRITES,
     exploding: null,
-    cleanupSprites: [],
+    cleanupSprites: TANK_DEBRIS_RESTING_STAGE_SPRITES,
   },
   splatter: {
     flying: SPLATTER_DEBRIS_VARIANTS[0]?.spriteFlying ?? null,
@@ -216,15 +501,90 @@ function getDebrisSpriteSet(kind: DebrisKind) {
   return DEBRIS_SPRITE_SETS[kind];
 }
 
+export function getDebrisGuideSprites(kind: DebrisKind): DebrisGuideSprite[] {
+  if (kind === "normal") {
+    return NORMAL_DEBRIS_VARIANTS.map((variant, index) => ({
+      key: `normal-${index + 1}`,
+      src: variant.spriteFlying,
+      label: `Variant ${index + 1}`,
+    }));
+  }
+
+  if (kind === "splatter") {
+    return SPLATTER_DEBRIS_VARIANTS.map((variant, index) => ({
+      key: `splatter-${index + 1}`,
+      src: variant.spriteFlying,
+      label: index === 0 ? "Primary" : `Variant ${index + 1}`,
+    }));
+  }
+
+  if (kind === "heavy") {
+    return [
+      {
+        key: "heavy-primary",
+        src: DEBRIS_SPRITE_SETS.heavy.flying,
+        label: "Primary",
+      },
+    ];
+  }
+
+  if (kind === "tank") {
+    return [
+      {
+        key: "tank-primary",
+        src: DEBRIS_SPRITE_SETS.tank.flying,
+        label: "Primary",
+      },
+    ];
+  }
+
+  if (kind === "corrosive") {
+    return [
+      {
+        key: "corrosive-flying",
+        src: DEBRIS_SPRITE_SETS.corrosive.flying,
+        label: "Flying",
+      },
+      {
+        key: "corrosive-resting",
+        src: DEBRIS_SPRITE_SETS.corrosive.resting,
+        label: "Landed",
+      },
+    ];
+  }
+
+  const spriteSet = getDebrisSpriteSet(kind as DebrisKind);
+
+  return [
+    {
+      key: `${String(kind)}-fallback`,
+      src: spriteSet.flying ?? spriteSet.resting,
+      label: "Current",
+    },
+  ];
+}
+
 export function getRandomNormalDebrisVariant(seed: number) {
   const rolled = roll(seed);
   const variant =
     NORMAL_DEBRIS_VARIANTS[Math.floor(rolled.value * NORMAL_DEBRIS_VARIANTS.length)] ??
     NORMAL_DEBRIS_VARIANTS[0];
+  const shieldRestingSprites = variant?.shieldRestingSprites;
+  const shieldSpriteRoll =
+    shieldRestingSprites && shieldRestingSprites.length > 0 ? roll(rolled.seed) : undefined;
+  const shieldRestingSprite =
+    shieldRestingSprites && shieldRestingSprites.length > 0
+      ? shieldRestingSprites[Math.floor((shieldSpriteRoll?.value ?? 0) * shieldRestingSprites.length)] ??
+        shieldRestingSprites[0] ??
+        null
+      : null;
 
   return {
-    seed: rolled.seed,
-    variant,
+    seed: shieldSpriteRoll?.seed ?? rolled.seed,
+    variant: {
+      ...variant,
+      shieldRestingSprite,
+    },
   };
 }
 
@@ -240,6 +600,56 @@ export function getRandomSplatterDebrisVariant(seed: number) {
   };
 }
 
+function getDebrisBaseSpeed(kind: DebrisKind) {
+  return DEBRIS_BASE_SPEED[kind];
+}
+
+function getDebrisSpeedModifier(seed: number, kind: DebrisKind) {
+  const bandRoll = roll(seed);
+  const valueRoll = roll(bandRoll.seed);
+  let standardChance = 0.4;
+  let slowMin = 0.65;
+  let slowMax = 0.9;
+  let standardMin = 0.9;
+  let standardMax = 1.1;
+
+  if (kind === "heavy" || kind === "tank") {
+    standardChance = 0.18;
+    slowMin = 0.6;
+    slowMax = 0.85;
+    standardMin = 0.88;
+    standardMax = 1.02;
+  } else if (kind === "splatter") {
+    standardChance = 0.5;
+    slowMin = 0.75;
+    slowMax = 0.92;
+    standardMin = 0.92;
+    standardMax = 1.12;
+  } else if (kind === "corrosive") {
+    slowMin = 0.65;
+    slowMax = 0.9;
+    standardMin = 0.88;
+    standardMax = 1.06;
+  }
+
+  const useSlowBand = bandRoll.value > standardChance;
+  const min = useSlowBand ? slowMin : standardMin;
+  const max = useSlowBand ? slowMax : standardMax;
+
+  return {
+    seed: valueRoll.seed,
+    speedModifier: min + valueRoll.value * (max - min),
+  };
+}
+
+function getDebrisMovementMultiplier(elapsedMs: number) {
+  return clamp(
+    1 + (elapsedMs / DEBRIS_MOVEMENT_MULTIPLIER_STEP_MS) * DEBRIS_MOVEMENT_MULTIPLIER_STEP,
+    1,
+    DEBRIS_MOVEMENT_MULTIPLIER_MAX,
+  );
+}
+
 export function getHeavyDebrisCleanupStage(progress: number): DebrisCleanupStage {
   if (progress <= 0) {
     return 0;
@@ -253,11 +663,69 @@ export function getHeavyDebrisCleanupStage(progress: number): DebrisCleanupStage
   return 3;
 }
 
+function isRestingDebrisState(state: DebrisVisualState) {
+  return (
+    state === "resting" ||
+    state === "rest_1" ||
+    state === "rest_2" ||
+    state === "rest_3" ||
+    state === "rest_4"
+  );
+}
+
+function getTankDebrisStateFromHealth(hp: number, maxHp: number): DebrisVisualState {
+  if (maxHp <= 0) {
+    return "rest_4";
+  }
+
+  const remainingPercent = hp / maxHp;
+  if (remainingPercent > 0.75) {
+    return "rest_1";
+  }
+  if (remainingPercent > 0.5) {
+    return "rest_2";
+  }
+  if (remainingPercent > 0.25) {
+    return "rest_3";
+  }
+  return "rest_4";
+}
+
 function getDebrisCleanupProgress(kind: DebrisKind, hp: number, maxHp: number) {
   if (kind !== "heavy" || maxHp <= 0) {
     return 0;
   }
   return clamp(1 - hp / maxHp, 0, 1);
+}
+
+function getDebrisVisualVariation(seed: number, kind: DebrisKind) {
+  const presets = DEBRIS_VISUAL_VARIATION_PRESETS[kind];
+  const presetRoll = roll(seed);
+  const preset = presets[Math.floor(presetRoll.value * presets.length)] ?? presets[0];
+
+  return {
+    seed: presetRoll.seed,
+    variation: {
+      ...preset,
+    } satisfies DebrisVisualVariation,
+  };
+}
+
+function getDebrisScaleAssignment(seed: number, kind: DebrisKind) {
+  const weights = DEBRIS_SCALE_WEIGHTS[kind] ?? DEBRIS_SCALE_WEIGHTS.normal;
+  const normalizedRoll = Math.abs(Math.sin(seed * 12.9898 + 78.233)) % 1;
+  let threshold = 0;
+  let pickedScale: (typeof DEBRIS_SCALE_OPTIONS)[number] = DEBRIS_SCALE_OPTIONS[0];
+
+  for (let index = 0; index < DEBRIS_SCALE_OPTIONS.length; index += 1) {
+    threshold += weights[index] ?? 0;
+    if (normalizedRoll <= threshold || index === DEBRIS_SCALE_OPTIONS.length - 1) {
+      pickedScale = DEBRIS_SCALE_OPTIONS[index] ?? DEBRIS_SCALE_OPTIONS[0];
+      break;
+    }
+  }
+
+  return pickedScale;
 }
 
 function createDebrisVisualState(
@@ -267,26 +735,66 @@ function createDebrisVisualState(
   maxHp: number,
   variantOverride?: DebrisSpriteVariant,
 ) {
-  const sprites = variantOverride ?? {
-    spriteFlying: getDebrisSpriteSet(kind).flying,
-    spriteResting: getDebrisSpriteSet(kind).resting,
-    spriteExploding: getDebrisSpriteSet(kind).exploding,
-    cleanupSprites: getDebrisSpriteSet(kind).cleanupSprites,
-  };
+    const sprites = variantOverride ?? {
+      spriteFlying: getDebrisSpriteSet(kind).flying,
+      spriteResting: getDebrisSpriteSet(kind).resting,
+      shieldRestingSprites: getDebrisSpriteSet(kind).shieldRestingSprites,
+      shieldRestingAnimationSprites: getDebrisSpriteSet(kind).shieldRestingAnimationSprites,
+      shieldCleanupAnimationSprites: getDebrisSpriteSet(kind).shieldCleanupAnimationSprites,
+      shieldStageAnimationSprites: getDebrisSpriteSet(kind).shieldStageAnimationSprites,
+      spriteExploding: getDebrisSpriteSet(kind).exploding,
+      cleanupSprites: getDebrisSpriteSet(kind).cleanupSprites,
+    };
   const cleanupSprites = [...(sprites.cleanupSprites ?? [])];
   const cleanupProgress = getDebrisCleanupProgress(kind, hp, maxHp);
+  const resolvedState =
+    kind === "tank" && state !== "flying" && state !== "exploding"
+      ? getTankDebrisStateFromHealth(hp, maxHp)
+      : state;
   return {
     type: kind,
     isCorrosive: kind === "corrosive",
-    spriteFlying: sprites.spriteFlying,
-    spriteResting: sprites.spriteResting,
-    spriteExploding: sprites.spriteExploding ?? null,
+    scale: 1,
+    visualFlipX: false,
+    visualRotation: 0,
+    visualOffsetX: 0,
+    visualOffsetY: 0,
+      spriteFlying: sprites.spriteFlying,
+      spriteResting: sprites.spriteResting,
+      shieldRestingSprite: sprites.shieldRestingSprite ?? null,
+      shieldRestingSprites: sprites.shieldRestingSprites,
+      shieldRestingAnimationSprites: sprites.shieldRestingAnimationSprites,
+      shieldCleanupAnimationSprites: sprites.shieldCleanupAnimationSprites,
+      shieldStageAnimationSprites: sprites.shieldStageAnimationSprites,
+      spriteExploding: sprites.spriteExploding ?? null,
     cleanupSprites,
     cleanupProgress,
     cleanupStage: kind === "heavy" ? getHeavyDebrisCleanupStage(cleanupProgress) : 0,
-    state,
+    landingVariant: "center" as DebrisLandingVariant,
+    landingUsesShieldSettle: false,
+    shieldPoolTimerMs: 0,
+    shieldPoolVariant: "pool1" as ShieldPoolVariant,
+    shieldPoolScaleJitter: 0,
+    shieldPoolRotationDeg: 0,
+    shieldPoolOpacityJitter: 0,
+    shieldPoolPulseJitter: 0,
+    state: resolvedState,
     stateTimerMs: 0,
+    landingTimerMs: 0,
+    landingDurationMs: getDebrisLandingDurationMs(kind),
   };
+}
+
+function getDebrisLandingDurationMs(kind: DebrisKind) {
+  if (kind === "tank") {
+    return TANK_DEBRIS_LANDING_DURATION_MS;
+  }
+
+  if (kind === "heavy") {
+    return HEAVY_DEBRIS_LANDING_DURATION_MS;
+  }
+
+  return DEFAULT_DEBRIS_LANDING_DURATION_MS;
 }
 
 function transitionDebrisVisualState(
@@ -294,15 +802,78 @@ function transitionDebrisVisualState(
   state: DebrisVisualState,
   hp = debris.hp,
   stateTimerMs = state === debris.state ? debris.stateTimerMs : 0,
+  landingTimerMs = debris.landingTimerMs,
+  landingDurationMs = debris.landingDurationMs,
+  landingVariant = debris.landingVariant,
+  landingUsesShieldSettle = debris.landingUsesShieldSettle,
+  shieldPoolTimerMs = debris.shieldPoolTimerMs,
+  shieldPoolVariant = debris.shieldPoolVariant,
+  shieldPoolScaleJitter = debris.shieldPoolScaleJitter,
+  shieldPoolRotationDeg = debris.shieldPoolRotationDeg,
+  shieldPoolOpacityJitter = debris.shieldPoolOpacityJitter,
+  shieldPoolPulseJitter = debris.shieldPoolPulseJitter,
 ) {
   return {
-    ...createDebrisVisualState(debris.kind, state, hp, debris.maxHp, {
-      spriteFlying: debris.spriteFlying,
-      spriteResting: debris.spriteResting,
-      spriteExploding: debris.spriteExploding,
-      cleanupSprites: debris.cleanupSprites,
-    }),
-    stateTimerMs,
+      ...createDebrisVisualState(debris.kind, state, hp, debris.maxHp, {
+        spriteFlying: debris.spriteFlying,
+        spriteResting: debris.spriteResting,
+        shieldRestingSprite: debris.shieldRestingSprite,
+        shieldRestingSprites: debris.shieldRestingSprites,
+        shieldRestingAnimationSprites: debris.shieldRestingAnimationSprites,
+        shieldCleanupAnimationSprites: debris.shieldCleanupAnimationSprites,
+        shieldStageAnimationSprites: debris.shieldStageAnimationSprites,
+        spriteExploding: debris.spriteExploding,
+        cleanupSprites: debris.cleanupSprites,
+      }),
+    visualFlipX: debris.visualFlipX,
+    visualRotation: debris.visualRotation,
+    visualOffsetX: debris.visualOffsetX,
+    visualOffsetY: debris.visualOffsetY,
+      scale: debris.scale,
+      shieldRestingSprite: debris.shieldRestingSprite,
+      shieldRestingSprites: debris.shieldRestingSprites,
+      shieldRestingAnimationSprites: debris.shieldRestingAnimationSprites,
+      shieldCleanupAnimationSprites: debris.shieldCleanupAnimationSprites,
+      shieldStageAnimationSprites: debris.shieldStageAnimationSprites,
+      stateTimerMs,
+    landingTimerMs,
+    landingDurationMs,
+    landingVariant,
+    landingUsesShieldSettle,
+    shieldPoolTimerMs,
+    shieldPoolVariant,
+    shieldPoolScaleJitter,
+    shieldPoolRotationDeg,
+    shieldPoolOpacityJitter,
+    shieldPoolPulseJitter,
+  };
+}
+
+function rollDebrisLandingVariant(seed: number) {
+  const variantRoll = roll(seed);
+  const landingVariant: DebrisLandingVariant =
+    variantRoll.value < 1 / 3 ? "left" : variantRoll.value < 2 / 3 ? "right" : "center";
+
+  return {
+    seed: variantRoll.seed,
+    landingVariant,
+  };
+}
+
+function rollShieldPoolEffect(seed: number) {
+  const variantRoll = roll(seed);
+  const scaleRoll = roll(variantRoll.seed);
+  const rotationRoll = roll(scaleRoll.seed);
+  const opacityRoll = roll(rotationRoll.seed);
+  const pulseRoll = roll(opacityRoll.seed);
+
+  return {
+    seed: pulseRoll.seed,
+    shieldPoolVariant: (variantRoll.value < 0.5 ? "pool1" : "pool2") as ShieldPoolVariant,
+    shieldPoolScaleJitter: -0.05 + scaleRoll.value * 0.1,
+    shieldPoolRotationDeg: -7 + rotationRoll.value * 14,
+    shieldPoolOpacityJitter: -0.04 + opacityRoll.value * 0.08,
+    shieldPoolPulseJitter: -0.015 + pulseRoll.value * 0.03,
   };
 }
 
@@ -313,6 +884,22 @@ export function getDebrisRenderSprite(debris: Debris) {
 
   if (debris.state === "exploding") {
     return debris.spriteExploding ?? debris.spriteResting;
+  }
+
+  if (debris.kind === "tank") {
+    if (debris.state === "rest_1") {
+      return debris.spriteResting;
+    }
+    if (debris.state === "rest_2") {
+      return debris.cleanupSprites[0] ?? debris.spriteResting;
+    }
+    if (debris.state === "rest_3") {
+      return debris.cleanupSprites[1] ?? debris.spriteResting;
+    }
+    if (debris.state === "rest_4") {
+      return debris.cleanupSprites[2] ?? debris.spriteResting;
+    }
+    return debris.spriteResting;
   }
 
   if (debris.kind === "heavy" && debris.cleanupStage > 0) {
@@ -357,8 +944,8 @@ const STAGES = [
   },
   {
     name: "Advanced",
-    intro: "Unstable debris live. Stay sharp.",
-    weights: { normal: 64, corrosive: 18, heavy: 8, unstable: 4, splatter: 6 },
+    intro: "Tank and splatter debris active. Stay sharp.",
+    weights: { normal: 60, corrosive: 18, heavy: 10, splatter: 7, tank: 5 },
   },
 ] as const;
 
@@ -376,7 +963,6 @@ const DEBRIS_STATS: Record<
   normal: { hp: 1, damagePerSecond: 1.8, salvage: 3, xp: 4 },
   heavy: { hp: 3, damagePerSecond: 3, salvage: 5, xp: 7 },
   corrosive: { hp: 2, damagePerSecond: 5.1, salvage: 6, xp: 9 },
-  unstable: { hp: 2, damagePerSecond: 2.7, salvage: 8, xp: 12, explosionDamage: 11, fuseMs: 5400 },
   tank: { hp: 4.5, damagePerSecond: 4.2, salvage: 11, xp: 15 },
   splatter: {
     hp: 2.6,
@@ -404,6 +990,8 @@ export function getRogueBotTiming() {
     startMs: ROGUE_BOT_START_COOLDOWN_MS,
     minMs: ROGUE_BOT_RESPAWN_MIN_MS,
     maxMs: ROGUE_BOT_RESPAWN_MIN_MS + ROGUE_BOT_RESPAWN_RANGE_MS,
+    actionMinMs: ROGUE_BOT_ACTION_MIN_MS,
+    actionMaxMs: ROGUE_BOT_ACTION_MIN_MS + ROGUE_BOT_ACTION_RANGE_MS,
   };
 }
 
@@ -429,6 +1017,51 @@ export const PICKUP_APPEARANCE: Record<
   },
 };
 
+export const POWERUP_SPRITE_FILES: Record<PowerupKind, string> = {
+  shield: "ShieldPowerup.png",
+  hull: "HullPowerup.png",
+  nuke_reset: "NukePowerup.png",
+  slow_reset: "SlowPowerup.png",
+};
+
+export function getPowerupSprite(kind: PowerupKind) {
+  return `/assets/powerups/${POWERUP_SPRITE_FILES[kind]}`;
+}
+
+export const POWERUP_APPEARANCE: Record<
+  PowerupKind,
+  { short: string; tone: string; ring: string; label: string; spriteSrc: string }
+> = {
+  shield: {
+    short: "+S",
+    label: "Shield",
+    tone: "border-cyan-200/70 bg-[linear-gradient(160deg,_rgba(34,211,238,0.92),_rgba(8,145,178,0.88))] text-white",
+    ring: "border-cyan-200/60 shadow-[0_0_34px_rgba(34,211,238,0.3)]",
+    spriteSrc: getPowerupSprite("shield"),
+  },
+  hull: {
+    short: "+H",
+    label: "Hull",
+    tone: "border-emerald-200/70 bg-[linear-gradient(160deg,_rgba(52,211,153,0.95),_rgba(5,150,105,0.88))] text-white",
+    ring: "border-emerald-200/60 shadow-[0_0_34px_rgba(52,211,153,0.3)]",
+    spriteSrc: getPowerupSprite("hull"),
+  },
+  nuke_reset: {
+    short: "NR",
+    label: "Nuke Reset",
+    tone: "border-amber-200/80 bg-[linear-gradient(160deg,_rgba(251,146,60,0.96),_rgba(220,38,38,0.92))] text-white",
+    ring: "border-amber-200/60 shadow-[0_0_34px_rgba(249,115,22,0.34)]",
+    spriteSrc: getPowerupSprite("nuke_reset"),
+  },
+  slow_reset: {
+    short: "SR",
+    label: "Slow Reset",
+    tone: "border-sky-200/80 bg-[linear-gradient(160deg,_rgba(103,232,249,0.96),_rgba(14,165,233,0.9))] text-slate-950",
+    ring: "border-sky-200/60 shadow-[0_0_34px_rgba(56,189,248,0.3)]",
+    spriteSrc: getPowerupSprite("slow_reset"),
+  },
+};
+
 export const BOT_APPEARANCE: Record<
   BotKind,
   { short: string; tone: string; ring: string }
@@ -443,11 +1076,6 @@ export const BOT_APPEARANCE: Record<
     tone: "border-amber-200/70 bg-[linear-gradient(160deg,_rgba(253,230,138,0.96),_rgba(217,119,6,0.88))] text-slate-950",
     ring: "border-amber-200/40 shadow-[0_0_32px_rgba(251,191,36,0.24)]",
   },
-  stabilizer: {
-    short: "S",
-    tone: "border-sky-200/70 bg-[linear-gradient(160deg,_rgba(125,211,252,0.96),_rgba(14,165,233,0.86))] text-slate-950",
-    ring: "border-sky-200/40 shadow-[0_0_32px_rgba(56,189,248,0.24)]",
-  },
   turret: {
     short: "T",
     tone: "border-fuchsia-200/70 bg-[linear-gradient(160deg,_rgba(240,171,252,0.96),_rgba(168,85,247,0.88))] text-slate-950",
@@ -459,6 +1087,45 @@ export const BOT_APPEARANCE: Record<
     ring: "border-rose-200/45 shadow-[0_0_34px_rgba(244,63,94,0.3)]",
   },
 };
+
+function toPascalCase(value: string) {
+  return value
+    .split(/[_-\s]+/)
+    .filter(Boolean)
+    .map((segment) => segment[0]?.toUpperCase() + segment.slice(1))
+    .join("");
+}
+
+export function getBotSpriteName(kind: BotKind) {
+  return `${toPascalCase(kind)}Bot`;
+}
+
+export function getBotSprites(kind: BotKind) {
+  const spriteName = getBotSpriteName(kind);
+  return Array.from(
+    { length: BOT_SPRITE_FRAME_COUNT },
+    (_, index) => `/assets/bots/${spriteName}${index + 1}.png`,
+  );
+}
+
+export function getBotAnimationFrameDuration(kind: BotKind) {
+  void kind;
+  return DEFAULT_BOT_ANIMATION_FRAME_DURATION_MS;
+}
+
+function getBotShotOrigin(bot: SupportBot) {
+  if (bot.kind === "turret") {
+    return {
+      x: bot.x,
+      y: bot.y - 3.6,
+    };
+  }
+
+  return {
+    x: bot.x,
+    y: bot.y,
+  };
+}
 
 export const DEBRIS_APPEARANCE: Record<
   DebrisKind,
@@ -488,11 +1155,6 @@ export const DEBRIS_APPEARANCE: Record<
     short: "S",
     shape: "rounded-[42%_32%_46%_28%]",
     fill: "border-violet-200/45 bg-[linear-gradient(160deg,_#c084fc,_#6d28d9)]",
-  },
-  unstable: {
-    short: "U",
-    shape: "rounded-full",
-    fill: "border-rose-200/45 bg-[linear-gradient(160deg,_#fb7185,_#be123c)]",
   },
 };
 
@@ -563,6 +1225,10 @@ function roll(seed: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function lerp(start: number, end: number, amount: number) {
+  return start + (end - start) * amount;
 }
 
 function getModifierCounts(modifiers: MilestoneModifier[]) {
@@ -736,13 +1402,13 @@ export function getStrengthScore(state: GameState) {
 
 export function getSpawnIntervalSeconds(timeSurvivedSeconds: number, playerLevel: number) {
   return Math.max(
-    0.34,
-    BASE_SPAWN_INTERVAL_S - timeSurvivedSeconds * 0.00265 - playerLevel * 0.0105,
+    0.33,
+    BASE_SPAWN_INTERVAL_S - timeSurvivedSeconds * 0.0032 - playerLevel * 0.0128,
   );
 }
 
 export function getSpawnCount(timeSurvivedSeconds: number, _strengthScore: number, level: number) {
-  const count = 1 + Math.floor(timeSurvivedSeconds / 55) + Math.floor(level / 13);
+  const count = 1 + Math.floor(timeSurvivedSeconds / 52) + Math.floor(level / 12);
   return Math.min(MAX_SPAWN_COUNT + 1, count);
 }
 
@@ -757,7 +1423,7 @@ export function getNormalDebrisCap() {
 export function getTargetActiveDebris(timeSurvivedSeconds: number, strengthScore: number, level: number) {
   return Math.min(
     MAX_TARGET_ACTIVE_DEBRIS,
-    6 + Math.floor(level / 3) + Math.floor(timeSurvivedSeconds / 22) + Math.floor(strengthScore / 9),
+    6 + Math.floor(level / 3) + Math.floor(timeSurvivedSeconds / 21) + Math.floor(strengthScore / 8),
   );
 }
 
@@ -766,7 +1432,6 @@ export function getActiveDebrisCaps(level: number) {
     normal: getDebrisTypeCap(level, "normal"),
     heavy: getDebrisTypeCap(level, "heavy"),
     corrosive: getDebrisTypeCap(level, "corrosive"),
-    unstable: getDebrisTypeCap(level, "unstable"),
     tank: getDebrisTypeCap(level, "tank"),
     splatter: getDebrisTypeCap(level, "splatter"),
   };
@@ -814,7 +1479,7 @@ export function getDebrisSpawnWeights(level: number): Partial<Record<DebrisKind,
   };
 
   if (level >= 10) {
-    weights.heavy = 5 + level * 0.75;
+    weights.heavy = 5.8 + level * 0.82;
   }
 
   if (level >= 12) {
@@ -822,11 +1487,7 @@ export function getDebrisSpawnWeights(level: number): Partial<Record<DebrisKind,
   }
 
   if (level >= 18) {
-    weights.unstable = level * 0.42;
-  }
-
-  if (level >= 18) {
-    weights.tank = 1.8 + level * 0.18;
+    weights.tank = 2 + level * 0.2;
   }
 
   return weights;
@@ -837,9 +1498,9 @@ export function getBurstWaveIntervalSeconds(strengthScore: number, level: number
     return 999;
   }
   if (level <= 15) {
-    return Math.max(34, 44 - Math.floor(strengthScore * 0.1));
+    return Math.max(33, 42 - Math.floor(strengthScore * 0.11));
   }
-  return Math.max(28, 40 - Math.floor(strengthScore * 0.18));
+  return Math.max(26, 38 - Math.floor(strengthScore * 0.19));
 }
 
 export function getBurstSpawnCount(timeSurvivedSeconds: number, strengthScore: number, level: number) {
@@ -847,11 +1508,11 @@ export function getBurstSpawnCount(timeSurvivedSeconds: number, strengthScore: n
     return 0;
   }
   if (level <= 15) {
-    return Math.min(3, 2 + Math.floor(timeSurvivedSeconds / 80));
+    return Math.min(3, 2 + Math.floor(timeSurvivedSeconds / 75));
   }
   return Math.min(
     MAX_BURST_SPAWN_COUNT,
-    3 + Math.floor(timeSurvivedSeconds / 60) + Math.floor(strengthScore / 18),
+    3 + Math.floor(timeSurvivedSeconds / 58) + Math.floor(strengthScore / 17),
   );
 }
 
@@ -878,8 +1539,13 @@ function baseState(seed = 1337, difficulty: DifficultyMode = "Normal"): GameStat
     debris: [],
     pickups: [],
     powerups: [],
+    capturedDebris: [],
+    transportDebris: [],
+    flybyDebris: [],
     activeBot: undefined,
     incomingBotWarning: undefined,
+    activeRogueBot: undefined,
+    incomingRogueBotWarning: undefined,
     botShots: [],
     objectives: [],
     effects: [],
@@ -895,8 +1561,10 @@ function baseState(seed = 1337, difficulty: DifficultyMode = "Normal"): GameStat
       shield: 0,
     },
     slowTimeMs: 0,
+    postSlowRecoveryMs: 0,
     nukeFlashMs: 0,
     postNukeSlowMs: 0,
+    debrisSpeedMultiplier: 1,
     clearRecoveryMs: 0,
     comboCount: 0,
     comboTimerMs: 0,
@@ -921,6 +1589,9 @@ function baseState(seed = 1337, difficulty: DifficultyMode = "Normal"): GameStat
     nextDebrisId: 1,
     nextPickupId: 1,
     nextPowerupId: 1,
+    nextCapturedDebrisId: 1,
+    nextTransportDebrisId: 1,
+    nextFlybyDebrisId: 1,
     nextBotShotId: 1,
     nextEffectId: 1,
     nextObjectiveId: 1,
@@ -928,6 +1599,8 @@ function baseState(seed = 1337, difficulty: DifficultyMode = "Normal"): GameStat
     heavyClears: 0,
     dangerousClears: 0,
     lastHullDamageAt: 0,
+    lastResetPowerupSpawnAt: 0,
+    flybySpawnCooldownMs: FLYBY_DEBRIS_SPAWN_DELAY_MIN_MS,
   };
 }
 
@@ -991,7 +1664,135 @@ export function getDebrisMotionState(debris: Debris) {
     return "falling";
   }
 
+  if (isRestingDebrisState(debris.state)) {
+    return "resting";
+  }
+
   return debris.ageMs >= debris.fallDurationMs ? "resting" : "falling";
+}
+
+export function getDebrisRenderSize(debris: Pick<Debris, "kind" | "isFragment" | "scale">) {
+  const baseSize =
+    debris.kind === "heavy"
+      ? 19.5
+      : debris.kind === "tank"
+        ? 17.5
+        : debris.kind === "splatter"
+          ? 13.5
+          : 11.5;
+
+  const fragmentAdjustedSize = debris.isFragment ? baseSize * 0.68 : baseSize;
+  return fragmentAdjustedSize * (debris.scale ?? 1);
+}
+
+function getFlybySpawnDelay(seed: number) {
+  const rolled = roll(seed);
+  return {
+    seed: rolled.seed,
+    delayMs: Math.round(FLYBY_DEBRIS_SPAWN_DELAY_MIN_MS + rolled.value * FLYBY_DEBRIS_SPAWN_DELAY_RANGE_MS),
+  };
+}
+
+function createFlybyDebris(seed: number, id: number) {
+  const spriteRoll = roll(seed);
+  const spriteIndex = Math.min(
+    FLYBY_DEBRIS_SPRITES.length - 1,
+    Math.floor(spriteRoll.value * FLYBY_DEBRIS_SPRITES.length),
+  );
+  const spriteEntry = FLYBY_DEBRIS_SPRITES[spriteIndex] ?? FLYBY_DEBRIS_SPRITES[0];
+  const sideRoll = roll(spriteRoll.seed);
+  const positionRoll = roll(sideRoll.seed);
+  const driftRoll = roll(positionRoll.seed);
+  const speedRoll = roll(driftRoll.seed);
+  const scaleRoll = roll(speedRoll.seed);
+  const rotationRoll = roll(scaleRoll.seed);
+  const rotationSpeedRoll = roll(rotationRoll.seed);
+  const rotationDirectionRoll = roll(rotationSpeedRoll.seed);
+  const flipRoll = roll(rotationDirectionRoll.seed);
+  const speed = FLYBY_DEBRIS_SPEED_MIN + speedRoll.value * (FLYBY_DEBRIS_SPEED_MAX - FLYBY_DEBRIS_SPEED_MIN);
+  const scale = FLYBY_DEBRIS_SCALE_MIN + scaleRoll.value * (FLYBY_DEBRIS_SCALE_MAX - FLYBY_DEBRIS_SCALE_MIN);
+  const rotationSpeedMagnitude =
+    FLYBY_DEBRIS_ROTATION_SPEED_MIN +
+    rotationSpeedRoll.value * (FLYBY_DEBRIS_ROTATION_SPEED_MAX - FLYBY_DEBRIS_ROTATION_SPEED_MIN);
+  const rotationSpeed = (rotationDirectionRoll.value < 0.5 ? -1 : 1) * rotationSpeedMagnitude;
+  const spawnLane = sideRoll.value < 0.58 ? "top" : sideRoll.value < 0.79 ? "left" : "right";
+  let x = 50;
+  let y = -FLYBY_DEBRIS_DESPAWN_MARGIN;
+  let velocityX = 0;
+  let velocityY = speed;
+
+  if (spawnLane === "top") {
+    x = 10 + positionRoll.value * 80;
+    velocityX = (driftRoll.value - 0.5) * 10;
+  } else if (spawnLane === "left") {
+    x = -FLYBY_DEBRIS_DESPAWN_MARGIN;
+    y = 4 + positionRoll.value * 26;
+    velocityX = 6 + driftRoll.value * 8;
+    velocityY = speed * 0.94;
+  } else {
+    x = 100 + FLYBY_DEBRIS_DESPAWN_MARGIN;
+    y = 4 + positionRoll.value * 26;
+    velocityX = -(6 + driftRoll.value * 8);
+    velocityY = speed * 0.94;
+  }
+
+  return {
+    seed: flipRoll.seed,
+    flybyDebris: {
+      id,
+      kind: spriteEntry.kind,
+      spriteSrc: spriteEntry.spriteSrc,
+      scale,
+      x,
+      y,
+      velocityX,
+      velocityY,
+      rotation: rotationRoll.value * 360,
+      rotationSpeed,
+      flipX: flipRoll.value < 0.5,
+    } satisfies FlybyDebris,
+  };
+}
+
+function tickFlybyDebris(state: GameState, deltaMs: number) {
+  const deltaSeconds = deltaMs / 1000;
+  const flybyDebris = state.flybyDebris
+    .map((debris) => ({
+      ...debris,
+      x: debris.x + debris.velocityX * deltaSeconds,
+      y: debris.y + debris.velocityY * deltaSeconds,
+      rotation: debris.rotation + debris.rotationSpeed * deltaSeconds,
+    }))
+    .filter(
+      (debris) =>
+        debris.x >= -FLYBY_DEBRIS_DESPAWN_MARGIN &&
+        debris.x <= 100 + FLYBY_DEBRIS_DESPAWN_MARGIN &&
+        debris.y >= -FLYBY_DEBRIS_DESPAWN_MARGIN &&
+        debris.y <= 100 + FLYBY_DEBRIS_DESPAWN_MARGIN,
+    );
+
+  let rngSeed = state.rngSeed;
+  let flybySpawnCooldownMs = state.flybySpawnCooldownMs - deltaMs;
+  let nextFlybyDebrisId = state.nextFlybyDebrisId;
+  const spawned: FlybyDebris[] = [];
+
+  while (flybySpawnCooldownMs <= 0) {
+    const created = createFlybyDebris(rngSeed, nextFlybyDebrisId);
+    rngSeed = created.seed;
+    nextFlybyDebrisId += 1;
+    spawned.push(created.flybyDebris);
+
+    const delay = getFlybySpawnDelay(rngSeed);
+    rngSeed = delay.seed;
+    flybySpawnCooldownMs += delay.delayMs;
+  }
+
+  return {
+    rngSeed,
+    flybySpawnCooldownMs,
+    nextFlybyDebrisId,
+    flybyDebris: [...flybyDebris, ...spawned],
+  };
 }
 
 export function getRestingDebrisCount(debrisList: Debris[]) {
@@ -1004,8 +1805,17 @@ export function getRestingCorrosiveDebrisCount(debrisList: Debris[]) {
   ).length;
 }
 
+function getDebrisDamageScale(debris: Debris) {
+  const remainingPercent = clamp(debris.hp / Math.max(0.001, debris.maxHp), 0, 1);
+  return Math.max(
+    RESTING_DAMAGE_SCALE_FLOOR,
+    Math.pow(remainingPercent, RESTING_DAMAGE_SCALE_EXPONENT),
+  );
+}
+
 function getDebrisRestingBurden(debris: Debris) {
-  return debris.kind === "tank" || debris.kind === "splatter" ? 3 : 1;
+  const baseBurden = debris.kind === "tank" || debris.kind === "splatter" ? 3 : 1;
+  return baseBurden * getDebrisDamageScale(debris);
 }
 
 export function getRestingDebrisBurden(debrisList: Debris[]) {
@@ -1019,6 +1829,45 @@ export function getRestingDebrisBurden(debrisList: Debris[]) {
 
 export function getPickupProgress(pickup: Pickup) {
   return clamp(pickup.ageMs / pickup.fallDurationMs, 0, 1);
+}
+
+function getReadableTravelSideFromPosition(x: number, y: number): EntrySide {
+  const distances: Array<{ side: EntrySide; value: number }> = [
+    { side: "top", value: y },
+    { side: "bottom", value: 100 - y },
+    { side: "left", value: x },
+    { side: "right", value: 100 - x },
+  ];
+
+  distances.sort((a, b) => a.value - b.value);
+  return distances[0]?.side ?? "left";
+}
+
+function getReadablePowerupTravelVector(
+  x: number,
+  y: number,
+  speed: number,
+  seed: number,
+  preferredSide?: EntrySide,
+) {
+  const side = preferredSide ?? getReadableTravelSideFromPosition(x, y);
+  const angleRoll = roll(seed);
+  const variance = (angleRoll.value - 0.5) * POWERUP_DIRECTION_VARIANCE_RAD;
+  const baseAngle =
+    side === "top"
+      ? Math.PI / 2
+      : side === "bottom"
+        ? -Math.PI / 2
+        : side === "left"
+          ? 0
+          : Math.PI;
+
+  return {
+    seed: angleRoll.seed,
+    entrySide: side,
+    velocityX: Math.cos(baseAngle + variance) * speed,
+    velocityY: Math.sin(baseAngle + variance) * speed,
+  };
 }
 
 export function getFallingY(targetY: number, ageMs: number, fallDurationMs: number) {
@@ -1042,13 +1891,48 @@ export function getDebrisFuseProgress(debris: Debris) {
   return clamp((debris.ageMs - debris.fallDurationMs) / stats.fuseMs, 0, 1);
 }
 
-export function getPostNukeFallSpeedMultiplier(postNukeSlowMs: number) {
-  if (postNukeSlowMs <= 0) {
+export function getDebrisLandingProgress(debris: Debris) {
+  if (getDebrisMotionState(debris) !== "resting") {
     return 1;
   }
 
-  const progress = 1 - clamp(postNukeSlowMs / POST_NUKE_SLOW_DURATION_MS, 0, 1);
-  return POST_NUKE_SLOW_START_MULTIPLIER + (1 - POST_NUKE_SLOW_START_MULTIPLIER) * progress;
+  return clamp(
+    debris.landingTimerMs / Math.max(1, debris.landingDurationMs),
+    0,
+    1,
+  );
+}
+
+function isDebrisVacuumCaptureEligible(debris: Debris) {
+  return getDebrisMotionState(debris) === "resting" && getDebrisLandingProgress(debris) >= 1;
+}
+
+export function getPostNukeFallSpeedMultiplier(postNukeSlowMs: number) {
+  return getRecoverySpeedMultiplier(postNukeSlowMs, POST_NUKE_SLOW_START_MULTIPLIER);
+}
+
+function getRecoverySpeedMultiplier(remainingMs: number, startMultiplier: number) {
+  if (remainingMs <= 0) {
+    return 1;
+  }
+
+  const elapsedMs = POST_EFFECT_RECOVERY_DURATION_MS - clamp(remainingMs, 0, POST_EFFECT_RECOVERY_DURATION_MS);
+  if (elapsedMs <= POST_EFFECT_RECOVERY_HOLD_MS) {
+    return startMultiplier;
+  }
+
+  const rampProgress = clamp(
+    (elapsedMs - POST_EFFECT_RECOVERY_HOLD_MS) / POST_EFFECT_RECOVERY_RAMP_MS,
+    0,
+    1,
+  );
+  const easedProgress = rampProgress * rampProgress * (3 - 2 * rampProgress);
+
+  return startMultiplier + (1 - startMultiplier) * easedProgress;
+}
+
+function getPostSlowFallSpeedMultiplier(postSlowRecoveryMs: number, startMultiplier: number) {
+  return getRecoverySpeedMultiplier(postSlowRecoveryMs, startMultiplier);
 }
 
 export function getHullPressureDamagePerSecond(restingDebrisCount: number, maxHull: number) {
@@ -1064,12 +1948,18 @@ export function getHullPressureDamagePerSecond(restingDebrisCount: number, maxHu
 }
 
 export function getCorrosiveHullDamagePerSecond(debrisList: Debris[]) {
-  const restingCorrosiveCount = getRestingCorrosiveDebrisCount(debrisList);
-  if (restingCorrosiveCount <= 0) {
-    return 0;
-  }
+  return debrisList.reduce((total, debris) => {
+    if (debris.kind !== "corrosive" || getDebrisMotionState(debris) !== "resting") {
+      return total;
+    }
 
-  return restingCorrosiveCount * DEBRIS_STATS.corrosive.damagePerSecond * CORROSIVE_RESTING_DAMAGE_MULTIPLIER;
+    return (
+      total +
+      DEBRIS_STATS.corrosive.damagePerSecond *
+        CORROSIVE_RESTING_DAMAGE_MULTIPLIER *
+        getDebrisDamageScale(debris)
+    );
+  }, 0);
 }
 
 export function formatTime(elapsedMs: number) {
@@ -1148,15 +2038,65 @@ export function getDebrisHp(kind: DebrisKind, level: number) {
 }
 
 function getDebrisRewardScale(debris: Debris) {
-  return debris.isFragment ? 0.45 : 1;
+  if (!debris.isFragment) {
+    return 1;
+  }
+
+  return DEBRIS_SALVAGE_CONFIG[debris.kind].fragmentScale;
 }
 
-function getDebrisRewards(debris: Debris) {
-  const reward = DEBRIS_STATS[debris.kind];
-  const scale = getDebrisRewardScale(debris);
+function getLateGameSalvageMultiplier(state: GameState) {
+  return clamp(
+    1 + (state.debrisSpeedMultiplier - 1) * 0.08,
+    1,
+    LATE_GAME_SALVAGE_MAX_MULTIPLIER,
+  );
+}
+
+function rollWeightedSalvageValue(seed: number) {
+  const first = roll(seed);
+  const second = roll(first.seed);
+  const third = roll(second.seed);
+
   return {
-    salvage: reward.salvage * scale,
-    xp: reward.xp * scale,
+    seed: third.seed,
+    value: (first.value + second.value + third.value) / 3,
+  };
+}
+
+function getDebrisRewards(state: GameState, debris: Debris) {
+  const reward = DEBRIS_STATS[debris.kind];
+  const config = DEBRIS_SALVAGE_CONFIG[debris.kind];
+  const range = config.range;
+  const scale = getDebrisRewardScale(debris);
+  const rewardSeed =
+    (state.rngSeed ^
+      Math.imul((debris.id + 1) >>> 0, 2654435761) ^
+      (state.elapsedMs >>> 0) ^
+      Math.imul((state.totalClears + 1) >>> 0, 2246822519) ^
+      DEBRIS_KIND_SALVAGE_SEEDS[debris.kind]) >>>
+    0;
+  const weightedRoll = rollWeightedSalvageValue(rewardSeed);
+  const bonusChanceRoll = roll(weightedRoll.seed);
+  let bonusMultiplier = 1;
+
+  if (bonusChanceRoll.value <= RARE_SALVAGE_BONUS_CHANCE) {
+    const bonusValueRoll = roll(bonusChanceRoll.seed);
+    bonusMultiplier = lerp(RARE_SALVAGE_BONUS_MIN, RARE_SALVAGE_BONUS_MAX, bonusValueRoll.value);
+  }
+
+  const lateGameMultiplier = getLateGameSalvageMultiplier(state);
+  const baseSalvage = lerp(range.min, range.max, weightedRoll.value) * scale * lateGameMultiplier;
+  const cappedSalvage = Math.min(
+    baseSalvage * bonusMultiplier,
+    range.max * scale * lateGameMultiplier * RARE_SALVAGE_MAX_MULTIPLIER,
+  );
+  const salvage = Math.max(1, Math.round(cappedSalvage));
+  const xp = reward.xp * scale;
+
+  return {
+    salvage,
+    xp,
   };
 }
 
@@ -1167,9 +2107,6 @@ function getSplitChance(debris: Debris) {
   if (debris.kind === "heavy") {
     return 0.3;
   }
-  if (debris.kind === "unstable") {
-    return 0.42;
-  }
   return 0;
 }
 
@@ -1178,9 +2115,7 @@ function isHeavyClassDebris(debris: Debris) {
 }
 
 function isDangerousDebris(debris: Debris) {
-  return !debris.isFragment && (
-    debris.kind === "corrosive" || debris.kind === "unstable" || debris.kind === "splatter"
-  );
+  return !debris.isFragment && (debris.kind === "corrosive" || debris.kind === "splatter");
 }
 
 export function getVacuumRange(state: GameState) {
@@ -1213,6 +2148,7 @@ export function getDerivedStats(state: GameState) {
     (getSpawnIntervalSeconds(timeSurvivedSeconds, state.level) + earlyIntervalBonus) *
     Math.max(0.72, spawnIntervalMultiplier) *
     difficulty.spawnIntervalMultiplier *
+    SPAWN_PRESSURE_INTERVAL_MULTIPLIER *
     1000;
   const totalActiveDebrisCap =
     getTotalActiveDebrisCap(state.level) +
@@ -1248,22 +2184,21 @@ export function getDerivedStats(state: GameState) {
     slowPressureMultiplier: Math.max(0.4, 0.6 - state.upgrades.ability * 0.025),
     slowCooldownMs: Math.round(22000 * abilityCooldownMultiplier),
     nukeCooldownMs: Math.round(42000 * abilityCooldownMultiplier),
-    pullRadius: Math.min(29, getVacuumRange(state) * rangeMultiplier * 1.38),
-    pullBasePerSecond: 24 * tempoMultiplier,
-    pullMaxVelocity: 28,
+    pullRadius: Math.min(30.5, getVacuumRange(state) * rangeMultiplier * 1.46),
+    pullBasePerSecond: 36 * VACUUM_STRENGTH_MULTIPLIER * tempoMultiplier,
+    pullMaxVelocity: 34 * VACUUM_STRENGTH_MULTIPLIER,
     botLifetimeMs: Math.min(12000, Math.round(8500 + state.upgrades.ability * 450)),
     shieldBotRegenPerSecond: state.maxShield * 0.05 * difficulty.shieldRegenMultiplier,
     scrapBotPowerPerSecond: vacuumPower * 0.34,
     scrapBotRadius: 14.5,
     scrapBotMoveSpeed: 26,
-    stabilizerRadius: 16,
-    stabilizerFallMultiplier: 0.75,
     turretBotRespawnMs: helpfulBotRespawnMs,
     turretBotFireCooldownMs: Math.max(950, Math.round(1150 * abilityCooldownMultiplier)),
     turretBotRange: 26,
     turretBotDamage: 1.12 + state.upgrades.ability * 0.07,
-    rogueBotBlastRadius: ROGUE_BOT_BLAST_RADIUS,
-    rogueBotSpitDamage: 0.75,
+    rogueBotMoveSpeed: ROGUE_BOT_MOVE_SPEED,
+    rogueBotTargetRange: ROGUE_BOT_TARGET_RANGE,
+    rogueBotActionRadius: ROGUE_BOT_ACTION_RADIUS,
     regenDelayMs: BASE_REGEN_DELAY_MS,
     baseRegenThreshold: regenThreshold,
     regenThresholdBonus,
@@ -1548,9 +2483,6 @@ function getSpawnWeights(state: GameState, isBurst: boolean) {
     if (weights.splatter !== undefined) {
       weights.splatter *= 1.08;
     }
-    if (weights.unstable !== undefined) {
-      weights.unstable *= 1.06;
-    }
     weights.normal = Math.max(50, (weights.normal ?? 70) * 0.9);
   }
 
@@ -1568,7 +2500,6 @@ function getEligibleSpawnWeights(state: GameState, isBurst: boolean) {
       normal: 0,
       heavy: 0,
       corrosive: 0,
-      unstable: 0,
       tank: 0,
       splatter: 0,
     } as Record<DebrisKind, number>,
@@ -1600,11 +2531,55 @@ function getEligibleSpawnWeights(state: GameState, isBurst: boolean) {
 }
 
 function getSpawnChanceMultiplier(activeDebris: number, softTotalCap: number) {
-  return activeDebris >= softTotalCap ? 0.4 : 1;
+  return activeDebris >= softTotalCap ? 0.42 : 1;
+}
+
+function pickRareEarlySpecialDebrisKind(state: GameState) {
+  if (state.level < RARE_EARLY_SPECIAL_DEBRIS_UNLOCK_LEVEL) {
+    return { seed: state.rngSeed, picked: undefined as DebrisKind | undefined };
+  }
+
+  const chanceRoll = roll(state.rngSeed);
+  if (chanceRoll.value > RARE_EARLY_SPECIAL_DEBRIS_CHANCE) {
+    return { seed: chanceRoll.seed, picked: undefined as DebrisKind | undefined };
+  }
+
+  const activeCounts = state.debris.reduce(
+    (counts, debris) => {
+      counts[debris.kind] += 1;
+      return counts;
+    },
+    {
+      normal: 0,
+      heavy: 0,
+      corrosive: 0,
+      tank: 0,
+      splatter: 0,
+    } as Record<DebrisKind, number>,
+  );
+
+  const eligibleKinds = (["tank", "heavy", "splatter"] as const).filter(
+    (kind) => activeCounts[kind] < Math.max(1, getDebrisTypeCap(state.level, kind)),
+  );
+
+  if (eligibleKinds.length === 0) {
+    return { seed: chanceRoll.seed, picked: undefined as DebrisKind | undefined };
+  }
+
+  const pickRoll = roll(chanceRoll.seed);
+  const picked =
+    eligibleKinds[Math.min(eligibleKinds.length - 1, Math.floor(pickRoll.value * eligibleKinds.length))];
+
+  return { seed: pickRoll.seed, picked };
 }
 
 function pickDebrisKind(state: GameState, isBurst: boolean) {
-  const eligible = getEligibleSpawnWeights(state, isBurst);
+  const rareEarlyPick = pickRareEarlySpecialDebrisKind(state);
+  if (rareEarlyPick.picked) {
+    return rareEarlyPick;
+  }
+
+  const eligible = getEligibleSpawnWeights({ ...state, rngSeed: rareEarlyPick.seed }, isBurst);
   const weights = eligible.weights;
   if (Object.keys(weights).length === 0) {
     return { seed: eligible.seed, picked: undefined };
@@ -1614,7 +2589,7 @@ function pickDebrisKind(state: GameState, isBurst: boolean) {
     total += value;
   }
 
-  const { seed, value } = roll(state.rngSeed);
+  const { seed, value } = roll(eligible.seed);
   let cursor = value * total;
   let picked: DebrisKind = "normal";
 
@@ -1640,10 +2615,8 @@ function pickDebrisBehavior(
   if (rates.drift > 0) {
     entries.push(["drift", rates.drift]);
   }
-  if (rates.sticky > 0 && kind !== "unstable") {
-    if (kind !== "splatter") {
-      entries.push(["sticky", rates.sticky]);
-    }
+  if (rates.sticky > 0 && kind !== "splatter") {
+    entries.push(["sticky", rates.sticky]);
   }
   if (rates.swift > 0 && kind !== "heavy" && kind !== "tank" && kind !== "splatter") {
     entries.push(["swift", rates.swift]);
@@ -1744,28 +2717,38 @@ function maybeSpawnSplitFragments(state: GameState, source: Debris) {
     const offsetYRoll = roll(offsetXRoll.seed);
     const fallRoll = roll(offsetYRoll.seed);
     const normalVariantRoll = getRandomNormalDebrisVariant(fallRoll.seed);
+    const speedRoll = getDebrisSpeedModifier(normalVariantRoll.seed, "normal");
 
     const x = clamp(source.x + (offsetXRoll.value - 0.5) * 10, 12, 88);
     const targetY = clamp(source.targetY + (offsetYRoll.value - 0.5) * 8, 18, 82);
     const hp = 0.8;
+    const baseSpeed = Math.max(
+      DEBRIS_MIN_BASE_SPEED,
+      getDebrisBaseSpeed("normal") * speedRoll.speedModifier,
+    );
+    const variationRoll = getDebrisVisualVariation(speedRoll.seed, "normal");
+    const scale = getDebrisScaleAssignment(variationRoll.seed, "normal");
 
     const fragment: Debris = {
       id: next.nextDebrisId,
       kind: "normal",
       isFragment: true,
+      speedModifier: speedRoll.speedModifier,
       ...createDebrisVisualState("normal", "flying", hp, hp, normalVariantRoll.variant),
+      ...variationRoll.variation,
+      scale,
       x,
       targetY,
       hp,
       maxHp: hp,
       ageMs: 0,
-      fallDurationMs: 430 + fallRoll.value * 240,
+      fallDurationMs: (430 + fallRoll.value * 240) / baseSpeed,
     };
 
     fragments.push(fragment);
     next = {
       ...next,
-      rngSeed: normalVariantRoll.seed,
+      rngSeed: variationRoll.seed,
       nextDebrisId: next.nextDebrisId + 1,
     };
   }
@@ -1796,11 +2779,18 @@ function spawnSplatterCorrosiveCluster(state: GameState, source: Debris) {
     const radiusRoll = roll(next.rngSeed);
     const angleRoll = roll(radiusRoll.seed);
     const fallRoll = roll(angleRoll.seed);
+    const speedRoll = getDebrisSpeedModifier(fallRoll.seed, "corrosive");
     const radius = 5.5 + radiusRoll.value * 3.5;
     const offsetAngle = angle + (angleRoll.value - 0.5) * 0.36;
     const x = clamp(source.x + Math.cos(offsetAngle) * radius, 12, 88);
     const targetY = clamp(source.targetY + Math.sin(offsetAngle) * (radius * 0.75), 18, 82);
-    const fallDurationMs = 260 + fallRoll.value * 120;
+    const baseSpeed = Math.max(
+      DEBRIS_MIN_BASE_SPEED,
+      getDebrisBaseSpeed("corrosive") * speedRoll.speedModifier,
+    );
+    const variationRoll = getDebrisVisualVariation(speedRoll.seed, "corrosive");
+    const scale = getDebrisScaleAssignment(variationRoll.seed, "corrosive");
+    const fallDurationMs = (260 + fallRoll.value * 120) / baseSpeed;
     const spawnProgress = clamp((source.targetY + 12) / (targetY + 12), 0.7, 0.96);
     const startingAgeMs = Math.round(fallDurationMs * spawnProgress);
     const driftDirection = x >= source.x ? 1 : -1;
@@ -1808,7 +2798,10 @@ function spawnSplatterCorrosiveCluster(state: GameState, source: Debris) {
     fragments.push({
       id: next.nextDebrisId,
       kind: "corrosive",
+      speedModifier: speedRoll.speedModifier,
       ...createDebrisVisualState("corrosive", "flying", hp, hp),
+      ...variationRoll.variation,
+      scale,
       isFragment: true,
       x,
       targetY,
@@ -1822,7 +2815,7 @@ function spawnSplatterCorrosiveCluster(state: GameState, source: Debris) {
 
     next = {
       ...next,
-      rngSeed: fallRoll.seed,
+      rngSeed: variationRoll.seed,
       nextDebrisId: next.nextDebrisId + 1,
     };
   }
@@ -1884,12 +2877,12 @@ export function getMovingShieldPowerupChance(shieldPercent: number, hullPercent:
     return 0;
   }
   if (shieldPercent > 0.42) {
-    return hullPercent <= 0.35 ? 0.14 : 0.1;
+    return hullPercent <= 0.35 ? 0.17 : 0.12;
   }
   if (shieldPercent > 0.18) {
-    return hullPercent <= 0.35 ? 0.22 : 0.16;
+    return hullPercent <= 0.35 ? 0.25 : 0.19;
   }
-  return hullPercent <= 0.35 ? 0.3 : 0.24;
+  return hullPercent <= 0.35 ? 0.33 : 0.27;
 }
 
 export function getMovingHullPowerupChance(hullPercent: number) {
@@ -1897,27 +2890,24 @@ export function getMovingHullPowerupChance(hullPercent: number) {
     return 0;
   }
   if (hullPercent > 0.58) {
-    return 0.045;
+    return 0.06;
   }
   if (hullPercent > 0.38) {
-    return 0.085;
+    return 0.11;
   }
   if (hullPercent > 0.2) {
-    return 0.125;
+    return 0.15;
   }
-  return 0.18;
+  return 0.21;
 }
 
 function pickHelpfulBotKind(state: GameState) {
-  const fallingDebris = state.debris.filter((debris) => getDebrisMotionState(debris) === "falling").length;
   const dangerousDebris = state.debris.filter(
-    (debris) =>
-      debris.kind === "corrosive" || debris.kind === "unstable" || debris.kind === "splatter",
+    (debris) => debris.kind === "corrosive" || debris.kind === "splatter",
   ).length;
   const weights: Record<Exclude<BotKind, "rogue">, number> = {
     shield: state.shield < state.maxShield - 12 ? 1.2 : 0.8,
     scrap: state.debris.length >= 5 ? 1.2 : 1,
-    stabilizer: fallingDebris >= 3 ? 1.15 : 0.95,
     turret: dangerousDebris >= 2 ? 1.15 : 1,
   };
 
@@ -1959,8 +2949,72 @@ function randomPickupPosition(state: GameState, seed: number) {
   return { seed: nextSeed, x };
 }
 
-function countMovingPowerups(state: GameState, kind: PickupKind) {
+function countMovingPowerups(state: GameState, kind: PowerupKind) {
   return state.powerups.filter((powerup) => powerup.kind === kind).length;
+}
+
+function isAbilityResetPowerupKind(kind: PowerupKind): kind is "nuke_reset" | "slow_reset" {
+  return kind === "nuke_reset" || kind === "slow_reset";
+}
+
+function countActiveResetPowerups(state: GameState) {
+  return state.powerups.filter((powerup) => isAbilityResetPowerupKind(powerup.kind)).length;
+}
+
+function hasActivePowerupOfKind(state: GameState, kind: PowerupKind) {
+  return state.powerups.some((powerup) => powerup.kind === kind);
+}
+
+function getDebrisResetPowerupDropChance(state: GameState) {
+  const baseChance = clamp(
+    DEBRIS_RESET_POWERUP_DROP_BASE_CHANCE + (state.debrisSpeedMultiplier - 1) * 0.02,
+    DEBRIS_RESET_POWERUP_DROP_BASE_CHANCE,
+    DEBRIS_RESET_POWERUP_DROP_MAX_CHANCE,
+  );
+  const elapsedSinceLastResetPowerup = Math.max(0, state.elapsedMs - state.lastResetPowerupSpawnAt);
+  const badLuckBonus =
+    elapsedSinceLastResetPowerup <= DEBRIS_RESET_POWERUP_BAD_LUCK_START_MS
+      ? 0
+      : clamp(
+          ((elapsedSinceLastResetPowerup - DEBRIS_RESET_POWERUP_BAD_LUCK_START_MS) /
+            DEBRIS_RESET_POWERUP_BAD_LUCK_RAMP_MS) *
+            DEBRIS_RESET_POWERUP_BAD_LUCK_MAX_BONUS,
+          0,
+          DEBRIS_RESET_POWERUP_BAD_LUCK_MAX_BONUS,
+        );
+
+  return Math.min(DEBRIS_RESET_POWERUP_MAX_CHANCE_WITH_BAD_LUCK, baseChance + badLuckBonus);
+}
+
+function pickAbilityResetPowerupKind(state: GameState, seed: number) {
+  const availableKinds: Array<"nuke_reset" | "slow_reset"> = [];
+
+  if (state.abilities.nuke.cooldownMs > 0 && !hasActivePowerupOfKind(state, "nuke_reset")) {
+    availableKinds.push("nuke_reset");
+  }
+  if (state.abilities.slowTime.cooldownMs > 0 && !hasActivePowerupOfKind(state, "slow_reset")) {
+    availableKinds.push("slow_reset");
+  }
+
+  if (availableKinds.length === 0) {
+    return {
+      seed,
+      picked: undefined,
+    };
+  }
+
+  if (availableKinds.length === 1) {
+    return {
+      seed,
+      picked: availableKinds[0],
+    };
+  }
+
+  const rolled = roll(seed);
+  return {
+    seed: rolled.seed,
+    picked: rolled.value < 0.5 ? availableKinds[0] : availableKinds[1],
+  };
 }
 
 function getPowerupTravelLifeMs(
@@ -1990,6 +3044,122 @@ function getPowerupTravelLifeMs(
   return Math.round((Number.isFinite(lifeSeconds) ? lifeSeconds : 2.8) * 1000);
 }
 
+function getCenterDirectedPowerupTravelVector(
+  x: number,
+  y: number,
+  speed: number,
+  seed: number,
+) {
+  const angleRoll = roll(seed);
+  const variance = (angleRoll.value - 0.5) * CENTER_POWERUP_DIRECTION_VARIANCE_RAD;
+  const deltaX = 50 - x;
+  const deltaY = 52 - y;
+  const baseAngle = Math.atan2(deltaY, deltaX);
+  const angle = baseAngle + variance;
+
+  return {
+    seed: angleRoll.seed,
+    velocityX: Math.cos(angle) * speed,
+    velocityY: Math.sin(angle) * speed,
+  };
+}
+
+function createDebrisResetPowerup(
+  state: GameState,
+  debris: Debris,
+  kind: "nuke_reset" | "slow_reset",
+  seed: number,
+) {
+  let nextSeed = seed;
+  const spawnY = getFallingY(debris.targetY, debris.ageMs, debris.fallDurationMs);
+  const direction = getReadablePowerupTravelVector(
+    debris.x,
+    spawnY,
+    DEBRIS_RESET_POWERUP_SPEED,
+    nextSeed,
+  );
+  nextSeed = direction.seed;
+  const speedRoll = roll(nextSeed);
+  nextSeed = speedRoll.seed;
+  const driftSpeed = DEBRIS_RESET_POWERUP_SPEED * (0.85 + speedRoll.value * 0.3);
+  const normalizedMagnitude = Math.max(0.001, Math.hypot(direction.velocityX, direction.velocityY));
+  const directionX = direction.velocityX / normalizedMagnitude;
+  const directionY = direction.velocityY / normalizedMagnitude;
+  const velocityX = directionX * driftSpeed;
+  const velocityY = directionY * driftSpeed;
+  const x = clamp(debris.x + directionX * 1.6, 10, 90);
+  const y = clamp(spawnY + directionY * 1.6, 14, 88);
+
+  return {
+    seed: nextSeed,
+    powerup: {
+      id: state.nextPowerupId,
+      kind,
+      x,
+      y,
+      velocityX,
+      velocityY,
+      value: 0,
+      ageMs: 0,
+      lifeMs: Math.min(
+        DEBRIS_RESET_POWERUP_LIFE_MS,
+        getPowerupTravelLifeMs(x, y, velocityX, velocityY),
+      ),
+      entrySide: "debris",
+    } satisfies RecoveryPowerup,
+  };
+}
+
+function maybeSpawnDebrisResetPowerup(state: GameState, debris: Debris) {
+  if (countActiveResetPowerups(state) >= MAX_ACTIVE_RESET_POWERUPS) {
+    return state;
+  }
+
+  if (state.elapsedMs - state.lastResetPowerupSpawnAt < RESET_POWERUP_MIN_INTERVAL_MS) {
+    return state;
+  }
+
+  const chanceRoll = roll(state.rngSeed);
+  if (chanceRoll.value > getDebrisResetPowerupDropChance(state)) {
+    return {
+      ...state,
+      rngSeed: chanceRoll.seed,
+    };
+  }
+
+  const kindPick = pickAbilityResetPowerupKind(state, chanceRoll.seed);
+  if (!kindPick.picked) {
+    return {
+      ...state,
+      rngSeed: kindPick.seed,
+    };
+  }
+
+  const created = createDebrisResetPowerup(state, debris, kindPick.picked, kindPick.seed);
+  let next: GameState = {
+    ...state,
+    rngSeed: created.seed,
+    nextPowerupId: state.nextPowerupId + 1,
+    powerups: [...state.powerups, created.powerup],
+    lastResetPowerupSpawnAt: state.elapsedMs,
+  };
+
+  next = pushEffect(next, {
+    x: created.powerup.x,
+    y: created.powerup.y,
+    label: kindPick.picked === "nuke_reset" ? "Nuke +" : "Slow +",
+    kind: "reward",
+    tone: kindPick.picked === "nuke_reset" ? EFFECT_TONE.reward : EFFECT_TONE.info,
+    lifeMs: 520,
+  });
+
+  return setToast(
+    next,
+    kindPick.picked === "nuke_reset" ? "Nuke reset core dropped" : "Slow reset core dropped",
+    "reward",
+  );
+}
+
 function createMovingPowerupFromEdge(
   state: GameState,
   kind: PickupKind,
@@ -2015,31 +3185,29 @@ function createMovingPowerupFromEdge(
     case 0:
       x = spanX;
       y = -margin;
-      velocityY = MOVING_POWERUP_SPEED;
       entrySide = "top";
       break;
     case 1:
       x = spanX;
       y = 100 + margin;
-      velocityY = -MOVING_POWERUP_SPEED;
       entrySide = "bottom";
       break;
     case 2:
       x = -margin;
       y = spanY;
-      velocityX = MOVING_POWERUP_SPEED;
       entrySide = "left";
       break;
     default:
       x = 100 + margin;
       y = spanY;
-      velocityX = -MOVING_POWERUP_SPEED;
       entrySide = "right";
       break;
   }
-
-  const travelDistance =
-    entrySide === "top" || entrySide === "bottom" ? 116 : 116;
+  const direction = getCenterDirectedPowerupTravelVector(x, y, MOVING_POWERUP_SPEED, nextSeed);
+  nextSeed = direction.seed;
+  velocityX = direction.velocityX;
+  velocityY = direction.velocityY;
+  const lifeMs = getPowerupTravelLifeMs(x, y, velocityX, velocityY);
 
   return {
     seed: nextSeed,
@@ -2052,7 +3220,7 @@ function createMovingPowerupFromEdge(
       velocityY,
       value,
       ageMs: 0,
-      lifeMs: Math.round((travelDistance / MOVING_POWERUP_SPEED) * 1000),
+      lifeMs,
       entrySide,
     } satisfies RecoveryPowerup,
   };
@@ -2066,12 +3234,10 @@ function createMovingPowerupFromBot(
   seed: number,
 ) {
   let nextSeed = seed;
-  const angleRoll = roll(nextSeed);
-  nextSeed = angleRoll.seed;
-  const centerAngle = Math.atan2(50 - bot.y, 50 - bot.x);
-  const angle = centerAngle + (angleRoll.value - 0.5) * 0.6;
-  const velocityX = Math.cos(angle) * MOVING_POWERUP_SPEED;
-  const velocityY = Math.sin(angle) * MOVING_POWERUP_SPEED;
+  const direction = getCenterDirectedPowerupTravelVector(bot.x, bot.y, MOVING_POWERUP_SPEED, nextSeed);
+  nextSeed = direction.seed;
+  const velocityX = direction.velocityX;
+  const velocityY = direction.velocityY;
   const lifeMs = getPowerupTravelLifeMs(bot.x, bot.y, velocityX, velocityY);
 
   return {
@@ -2099,10 +3265,10 @@ function maybeSpawnMovingPowerup(state: GameState) {
     countMovingPowerups(state, "shield") === 0 && state.shield < state.maxShield - 15;
   const canSpawnHull = countMovingPowerups(state, "hull") === 0 && state.hull < state.maxHull - 10;
   const shieldChance = canSpawnShield
-    ? Math.min(0.34, getMovingShieldPowerupChance(shieldPercent, hullPercent) * derived.pickupChanceMultiplier)
+    ? Math.min(0.38, getMovingShieldPowerupChance(shieldPercent, hullPercent) * derived.pickupChanceMultiplier)
     : 0;
   const hullChance = canSpawnHull
-    ? Math.min(0.22, getMovingHullPowerupChance(hullPercent) * derived.pickupChanceMultiplier)
+    ? Math.min(0.25, getMovingHullPowerupChance(hullPercent) * derived.pickupChanceMultiplier)
     : 0;
   const retryDelay = getMovingPowerupRespawnDelay(state.rngSeed, shieldChance <= 0 && hullChance <= 0);
 
@@ -2319,9 +3485,7 @@ function getBotToastLabel(kind: BotKind) {
     ? "Shield bot active"
     : kind === "scrap"
       ? "Scrap bot active"
-      : kind === "stabilizer"
-        ? "Stabilizer bot active"
-        : kind === "turret"
+      : kind === "turret"
           ? "Turret bot active"
           : "Rogue bot active";
 }
@@ -2330,11 +3494,21 @@ function isHelpfulBotKind(kind: BotKind) {
   return kind !== "rogue";
 }
 
-function getRoguePayloadCooldown(seed: number) {
+type BotSlot = "helpful" | "rogue";
+
+function getBotSlot(kind: BotKind): BotSlot {
+  return kind === "rogue" ? "rogue" : "helpful";
+}
+
+function getActiveBotForSlot(state: GameState, slot: BotSlot) {
+  return slot === "rogue" ? state.activeRogueBot : state.activeBot;
+}
+
+function getRogueActionCooldown(seed: number) {
   const rolled = roll(seed);
   return {
     seed: rolled.seed,
-    delayMs: Math.round(ROGUE_BOT_SPIT_MIN_MS + rolled.value * ROGUE_BOT_SPIT_RANGE_MS),
+    delayMs: Math.round(ROGUE_BOT_ACTION_MIN_MS + rolled.value * ROGUE_BOT_ACTION_RANGE_MS),
   };
 }
 
@@ -2347,20 +3521,25 @@ function planIncomingBot(state: GameState, kind: BotKind) {
   const side: IncomingBotWarning["side"] = directionRoll.value < 0.5 ? "left" : "right";
   const y = 28 + laneRoll.value * 40;
 
+  const warning = {
+    kind,
+    y,
+    side,
+    ttlMs: BOT_WARNING_MS,
+  } satisfies IncomingBotWarning;
+  const slot = getBotSlot(kind);
+
   return {
     ...state,
     rngSeed: seed,
-    incomingBotWarning: {
-      kind,
-      y,
-      side,
-      ttlMs: BOT_WARNING_MS,
-    },
+    incomingBotWarning: slot === "helpful" ? warning : state.incomingBotWarning,
+    incomingRogueBotWarning: slot === "rogue" ? warning : state.incomingRogueBotWarning,
   };
 }
 
 function spawnActiveBot(state: GameState, warning: IncomingBotWarning) {
-  if (state.activeBot) {
+  const slot = getBotSlot(warning.kind);
+  if (getActiveBotForSlot(state, slot)) {
     return state;
   }
 
@@ -2373,7 +3552,25 @@ function spawnActiveBot(state: GameState, warning: IncomingBotWarning) {
     warning.kind === "rogue"
       ? getRogueBotRespawnDelay(state.rngSeed, state.difficulty)
       : getBotRespawnDelay(state.rngSeed, derived);
-  const payloadRoll = getRoguePayloadCooldown(cooldownRoll.seed);
+  const payloadRoll = getRogueActionCooldown(cooldownRoll.seed);
+
+  const bot: SupportBot = {
+    kind: warning.kind,
+    x,
+    y: warning.y,
+    velocityX,
+    velocityY: 0,
+    baseY: warning.y,
+    entrySide: warning.side,
+    ageMs: 0,
+    lifeMs: derived.botLifetimeMs,
+    fireCooldownMs: 0,
+    payloadCooldownMs: payloadRoll.delayMs,
+    wobblePhase: payloadRoll.seed % 360,
+    animationFrameIndex: 0,
+    animationTimer: 0,
+    targetDebrisId: undefined,
+  };
 
   return setToast(
     {
@@ -2382,21 +3579,11 @@ function spawnActiveBot(state: GameState, warning: IncomingBotWarning) {
       botCooldownMs: warning.kind === "rogue" ? state.botCooldownMs : cooldownRoll.delayMs,
       rogueBotCooldownMs:
         warning.kind === "rogue" ? cooldownRoll.delayMs : state.rogueBotCooldownMs,
-      incomingBotWarning: undefined,
-      activeBot: {
-        kind: warning.kind,
-        x,
-        y: warning.y,
-        velocityX,
-        velocityY: 0,
-        baseY: warning.y,
-        entrySide: warning.side,
-        ageMs: 0,
-        lifeMs: derived.botLifetimeMs,
-        fireCooldownMs: 0,
-        payloadCooldownMs: payloadRoll.delayMs,
-        wobblePhase: payloadRoll.seed % 360,
-      },
+      incomingBotWarning: slot === "helpful" ? undefined : state.incomingBotWarning,
+      incomingRogueBotWarning:
+        slot === "rogue" ? undefined : state.incomingRogueBotWarning,
+      activeBot: slot === "helpful" ? bot : state.activeBot,
+      activeRogueBot: slot === "rogue" ? bot : state.activeRogueBot,
     },
     getBotToastLabel(warning.kind),
     warning.kind === "rogue" ? "danger" : "info",
@@ -2433,16 +3620,28 @@ function spawnDebris(state: GameState, isBurst = false): GameState {
     kindRoll.picked === "splatter"
       ? getRandomSplatterDebrisVariant(normalVariantRoll?.seed ?? behaviorRoll.seed)
       : undefined;
+  const speedRoll = getDebrisSpeedModifier(
+    splatterVariantRoll?.seed ?? normalVariantRoll?.seed ?? behaviorRoll.seed,
+    kindRoll.picked,
+  );
   const stickyMultiplier = behaviorRoll.behavior === "sticky" ? 1.18 : 1;
   const swiftMultiplier = behaviorRoll.behavior === "swift" ? 0.8 : 1;
   const hp =
     getDebrisHp(kindRoll.picked, state.level) *
     derived.difficulty.debrisHpMultiplier *
     stickyMultiplier;
+  const baseSpeed = Math.max(
+    DEBRIS_MIN_BASE_SPEED,
+    getDebrisBaseSpeed(kindRoll.picked) * speedRoll.speedModifier,
+  );
+  const variationRoll = getDebrisVisualVariation(speedRoll.seed, kindRoll.picked);
+  const scale = getDebrisScaleAssignment(variationRoll.seed, kindRoll.picked);
+  const baseFallDurationMs = 850 + fallRoll.value * 450;
 
   const debris: Debris = {
     id: state.nextDebrisId,
     kind: kindRoll.picked,
+    speedModifier: speedRoll.speedModifier,
     ...createDebrisVisualState(
       kindRoll.picked,
       "flying",
@@ -2450,19 +3649,21 @@ function spawnDebris(state: GameState, isBurst = false): GameState {
       hp,
       splatterVariantRoll?.variant ?? normalVariantRoll?.variant,
     ),
+    ...variationRoll.variation,
+    scale,
     x: positionRoll.x,
     targetY: positionRoll.y,
     hp,
     maxHp: hp,
     ageMs: 0,
-    fallDurationMs: (850 + fallRoll.value * 450) * swiftMultiplier,
+    fallDurationMs: (baseFallDurationMs / baseSpeed) * swiftMultiplier,
     behavior: behaviorRoll.behavior,
     driftVelocityX: behaviorRoll.driftVelocityX,
   };
 
   return {
     ...state,
-    rngSeed: splatterVariantRoll?.seed ?? normalVariantRoll?.seed ?? behaviorRoll.seed,
+    rngSeed: variationRoll.seed,
     nextDebrisId: state.nextDebrisId + 1,
     debris: [...state.debris, debris],
   };
@@ -2474,6 +3675,170 @@ function spawnWave(state: GameState, count: number, isBurst = false) {
     next = spawnDebris(next, isBurst);
   }
   return next;
+}
+
+const VACUUM_TRANSPORT_SPECIAL_SPRITE_KEY: VacuumTransportDebrisSpriteKey = "tubeDebris2";
+const VACUUM_TRANSPORT_DEFAULT_SPRITE_KEYS: VacuumTransportDebrisSpriteKey[] = [
+  "tubeDebris1",
+  "tubeDebris3",
+];
+
+function tickVacuumTransportDebris(state: GameState, deltaMs: number) {
+  const deltaSeconds = deltaMs / 1000;
+  return state.transportDebris
+    .map((piece) => ({
+      ...piece,
+      progress: piece.progress + piece.speed * deltaSeconds,
+    }))
+    .filter((piece) => piece.progress < 1.02);
+}
+
+function getTransportDebrisScale(debrisType?: DebrisKind) {
+  switch (debrisType) {
+    case "corrosive":
+    case "splatter":
+      return 1.03;
+    case "heavy":
+      return 1.08;
+    case "tank":
+      return 1.16;
+    case "normal":
+    default:
+      return 1;
+  }
+}
+
+function getTransportDebrisSpeed(debrisType?: DebrisKind) {
+  switch (debrisType) {
+    case "corrosive":
+      return 1.03;
+    case "splatter":
+      return 1;
+    case "heavy":
+      return 0.93;
+    case "tank":
+      return 0.86;
+    case "normal":
+    default:
+      return 1;
+  }
+}
+
+function getCaptureSnapDuration(debrisType?: DebrisKind) {
+  switch (debrisType) {
+    case "heavy":
+      return 118;
+    case "tank":
+      return 138;
+    case "corrosive":
+    case "splatter":
+      return 90;
+    case "normal":
+    default:
+      return VACUUM_CAPTURE_BASE_DURATION_MS;
+  }
+}
+
+function getTransportDebrisSprite(seed: number, debrisType?: DebrisKind) {
+  if (debrisType === "corrosive" || debrisType === "splatter") {
+    return {
+      spriteKey: VACUUM_TRANSPORT_SPECIAL_SPRITE_KEY,
+      seed,
+    };
+  }
+
+  const keyRoll = roll(seed);
+  const spriteKey =
+    VACUUM_TRANSPORT_DEFAULT_SPRITE_KEYS[
+      Math.floor(keyRoll.value * VACUUM_TRANSPORT_DEFAULT_SPRITE_KEYS.length)
+    ] ?? VACUUM_TRANSPORT_DEFAULT_SPRITE_KEYS[0];
+
+  return {
+    spriteKey,
+    seed: keyRoll.seed,
+  };
+}
+
+function spawnVacuumCaptureDebris(state: GameState, debris: Debris): GameState {
+  const suctionPoint = getVacuumSuctionPoint(state.vacuumX, state.vacuumY);
+  const progress = getDebrisProgress(debris);
+  const spriteSrc = getDebrisRenderSprite(debris) ?? debris.spriteFlying ?? debris.spriteResting;
+  const startY = -12 + (debris.targetY + 12) * progress;
+
+  return {
+    ...state,
+    nextCapturedDebrisId: state.nextCapturedDebrisId + 1,
+    capturedDebris: [
+      ...state.capturedDebris.slice(-(MAX_ACTIVE_VACUUM_CAPTURE_DEBRIS - 1)),
+      {
+        id: state.nextCapturedDebrisId,
+        kind: debris.type ?? debris.kind,
+        spriteSrc,
+        startX: debris.x,
+        startY,
+        targetX: suctionPoint.x,
+        targetY: suctionPoint.y,
+        ageMs: 0,
+        durationMs: getCaptureSnapDuration(debris.type ?? debris.kind),
+        rotation: debris.visualRotation,
+        scale: 1,
+        size: getDebrisRenderSize(debris),
+        flipX: Boolean(spriteSrc && debris.visualFlipX),
+      },
+    ],
+  };
+}
+
+function tickVacuumCaptureDebris(state: GameState, deltaMs: number): GameState {
+  if (state.capturedDebris.length === 0) {
+    return state;
+  }
+
+  let next = {
+    ...state,
+    capturedDebris: [] as VacuumCaptureDebris[],
+  };
+
+  for (const piece of state.capturedDebris) {
+    const ageMs = piece.ageMs + deltaMs;
+    if (ageMs >= piece.durationMs) {
+      next = spawnVacuumTransportDebris(next, piece.kind);
+      continue;
+    }
+
+    next.capturedDebris.push({
+      ...piece,
+      ageMs,
+    });
+  }
+
+  return next;
+}
+
+function spawnVacuumTransportDebris(state: GameState, debrisType?: DebrisKind): GameState {
+  const spriteSelection = getTransportDebrisSprite(state.rngSeed, debrisType);
+  const rotationRoll = roll(spriteSelection.seed);
+  const speed =
+    VACUUM_TRANSPORT_DEBRIS_BASE_SPEED * getTransportDebrisSpeed(debrisType);
+  const rotation = (rotationRoll.value * 2 - 1) * VACUUM_TRANSPORT_DEBRIS_MAX_ROTATION;
+  const scale = getTransportDebrisScale(debrisType);
+
+  return {
+    ...state,
+    rngSeed: rotationRoll.seed,
+    nextTransportDebrisId: state.nextTransportDebrisId + 1,
+    transportDebris: [
+      ...state.transportDebris.slice(-(MAX_ACTIVE_VACUUM_TRANSPORT_DEBRIS - 1)),
+      {
+        id: state.nextTransportDebrisId,
+        spriteKey: spriteSelection.spriteKey,
+        progress: VACUUM_TRANSPORT_DEBRIS_START_PROGRESS,
+        speed: Math.max(0.5, speed),
+        rotation,
+        scale,
+      },
+    ],
+  };
 }
 
 function tickEffects(state: GameState, deltaMs: number) {
@@ -2613,59 +3978,22 @@ function applyClearRewards(
 }
 
 function detonateRogueBot(state: GameState, bot: SupportBot) {
-  const derived = getDerivedStats(state);
-  let next = state;
-  let salvageGain = 0;
-  let xpGain = 0;
-  let clears = 0;
-  let heavyClears = 0;
-  let dangerousClears = 0;
-  const splitFragments: Debris[] = [];
-  const remaining: Debris[] = [];
-
-  for (const debris of next.debris) {
-    if (distance(bot.x, bot.y, debris.x, debris.targetY) > derived.rogueBotBlastRadius) {
-      remaining.push(debris);
-      continue;
-    }
-
-    const reward = getDebrisRewards(debris);
-    salvageGain += reward.salvage;
-    xpGain += reward.xp;
-    clears += 1;
-    if (isHeavyClassDebris(debris)) {
-      heavyClears += 1;
-    }
-    if (isDangerousDebris(debris)) {
-      dangerousClears += 1;
-    }
-    const splitResult = maybeSpawnSplitFragments(next, debris);
-    next = splitResult.state;
-    splitFragments.push(...splitResult.fragments);
-  }
-
-  next = pushEffect(next, {
+  let next = pushEffect(state, {
     x: bot.x,
     y: bot.y,
-    label: "Blast",
+    label: "Pop",
     kind: "danger",
-    tone: EFFECT_TONE.reward,
-    lifeMs: 700,
+    tone: EFFECT_TONE.danger,
+    lifeMs: 520,
   });
   next = {
     ...next,
-    activeBot: undefined,
-    debris: [...remaining, ...splitFragments],
-    totalClears: next.totalClears + clears,
-    heavyClears: next.heavyClears + heavyClears,
-    dangerousClears: next.dangerousClears + dangerousClears,
+    activeRogueBot:
+      state.activeRogueBot && state.activeRogueBot.kind === "rogue" ? undefined : state.activeRogueBot,
+    activeBot: state.activeBot?.kind === "rogue" ? undefined : state.activeBot,
   };
 
-  if (clears > 0) {
-    next = applyClearRewards(next, salvageGain, xpGain, clears, 0, false);
-  }
-
-  return setToast(next, clears > 0 ? "Rogue blast cleared debris" : "Rogue bot popped", "reward");
+  return setToast(next, "Rogue bot popped", "reward");
 }
 
 function applySuction(state: GameState, deltaMs: number) {
@@ -2677,36 +4005,38 @@ function applySuction(state: GameState, deltaMs: number) {
   }
 
   const derived = getDerivedStats(state);
+  const suctionPoint = getVacuumSuctionPoint(state.vacuumX, state.vacuumY);
   const suctionDamage = derived.suctionPowerPerSecond * (deltaMs / 1000);
   const pulledDebris = state.debris.map((debris) => {
-    if (debris.state === "exploding") {
+    if (debris.state === "exploding" || !isDebrisVacuumCaptureEligible(debris)) {
       return debris;
     }
 
-    const debrisDistance = distance(state.vacuumX, state.vacuumY, debris.x, debris.targetY);
+    const debrisDistance = distance(suctionPoint.x, suctionPoint.y, debris.x, debris.targetY);
     if (debrisDistance > derived.pullRadius || debrisDistance <= 0.001) {
       return debris;
     }
 
     const falloff = 1 - debrisDistance / derived.pullRadius;
-    const weightedFalloff = 0.25 + falloff * 0.75;
+    const weightedFalloff = 0.38 + falloff * 0.62;
     const pullSpeed = Math.min(derived.pullMaxVelocity, derived.pullBasePerSecond * weightedFalloff);
     const pullDistance = pullSpeed * (deltaMs / 1000);
     const moveRatio = Math.min(1, pullDistance / debrisDistance);
 
     return {
       ...debris,
-      x: clamp(debris.x + (state.vacuumX - debris.x) * moveRatio, 10, 90),
-      targetY: clamp(debris.targetY + (state.vacuumY - debris.targetY) * moveRatio, 16, 86),
+      x: clamp(debris.x + (suctionPoint.x - debris.x) * moveRatio, 10, 90),
+      targetY: clamp(debris.targetY + (suctionPoint.y - debris.targetY) * moveRatio, 16, 86),
     };
   });
   const suctionIds = pulledDebris
     .map((debris) => ({
       id: debris.id,
       state: debris.state,
-      distance: distance(state.vacuumX, state.vacuumY, debris.x, debris.targetY),
+      eligible: isDebrisVacuumCaptureEligible(debris),
+      distance: distance(suctionPoint.x, suctionPoint.y, debris.x, debris.targetY),
     }))
-    .filter((item) => item.state !== "exploding" && item.distance <= derived.vacuumRange)
+    .filter((item) => item.state !== "exploding" && item.eligible && item.distance <= derived.vacuumRange)
     .map((item) => item.id);
   const suctionSet = new Set(suctionIds);
 
@@ -2723,6 +4053,7 @@ function applySuction(state: GameState, deltaMs: number) {
   let clears = 0;
   let heavyClears = 0;
   let dangerousClears = 0;
+  let resetPowerupSpawnedThisEvent = false;
 
   for (const debris of pulledDebris) {
     if (!suctionSet.has(debris.id)) {
@@ -2740,7 +4071,7 @@ function applySuction(state: GameState, deltaMs: number) {
       continue;
     }
 
-    const reward = getDebrisRewards(debris);
+    const reward = getDebrisRewards(next, debris);
     salvageGain += reward.salvage;
     xpGain += reward.xp;
     clears += 1;
@@ -2761,7 +4092,14 @@ function applySuction(state: GameState, deltaMs: number) {
       tone: EFFECT_TONE.reward,
       lifeMs: 520,
     });
+    next = spawnVacuumCaptureDebris(next, debris);
 
+    if (!resetPowerupSpawnedThisEvent) {
+      const resetPowerupState = maybeSpawnDebrisResetPowerup(next, debris);
+      resetPowerupSpawnedThisEvent =
+        resetPowerupState.nextPowerupId !== next.nextPowerupId;
+      next = resetPowerupState;
+    }
     const splitResult = maybeSpawnSplitFragments(next, debris);
     next = splitResult.state;
     splitFragments.push(...splitResult.fragments);
@@ -2781,8 +4119,8 @@ function applySuction(state: GameState, deltaMs: number) {
 
   if (clears > 0) {
     next = pushEffect(next, {
-      x: next.vacuumX,
-      y: next.vacuumY,
+      x: suctionPoint.x,
+      y: suctionPoint.y,
       label: next.comboCount >= 3 ? `x${getComboMultiplier(next.comboCount).toFixed(2)}` : "Suck",
       kind: "tap",
       tone: EFFECT_TONE.info,
@@ -2796,7 +4134,7 @@ function applySuction(state: GameState, deltaMs: number) {
     for (const pickup of next.pickups) {
       const pickupY = getFallingY(pickup.targetY, pickup.ageMs, pickup.fallDurationMs);
       const collected =
-        distance(next.vacuumX, next.vacuumY, pickup.x, pickupY) <= derived.vacuumRange * 0.92;
+        distance(suctionPoint.x, suctionPoint.y, pickup.x, pickupY) <= derived.vacuumRange * 0.92;
 
       if (!collected) {
         remainingPickups.push(pickup);
@@ -2845,7 +4183,7 @@ function applySuction(state: GameState, deltaMs: number) {
 
     for (const powerup of next.powerups) {
       const collected =
-        distance(next.vacuumX, next.vacuumY, powerup.x, powerup.y) <= derived.vacuumRange * 0.98;
+        distance(suctionPoint.x, suctionPoint.y, powerup.x, powerup.y) <= derived.vacuumRange * 0.98;
 
       if (!collected) {
         remainingPowerups.push(powerup);
@@ -2866,7 +4204,7 @@ function applySuction(state: GameState, deltaMs: number) {
           lifeMs: 620,
         });
         next = setToast(next, "Moving shield secured", "reward");
-      } else {
+      } else if (powerup.kind === "hull") {
         next = {
           ...next,
           hull: Math.min(next.maxHull, next.hull + powerup.value),
@@ -2880,6 +4218,41 @@ function applySuction(state: GameState, deltaMs: number) {
           lifeMs: 620,
         });
         next = setToast(next, "Moving hull secured", "reward");
+      } else if (powerup.kind === "nuke_reset") {
+        next = {
+          ...next,
+          nukeFlashMs: Math.max(next.nukeFlashMs, 280),
+          abilities: {
+            ...next.abilities,
+            nuke: { cooldownMs: 0 },
+          },
+        };
+        next = pushEffect(next, {
+          x: powerup.x,
+          y: powerup.y,
+          label: "Nuke Ready",
+          kind: "reward",
+          tone: EFFECT_TONE.reward,
+          lifeMs: 680,
+        });
+        next = setToast(next, "Nuke cooldown reset", "reward");
+      } else {
+        next = {
+          ...next,
+          abilities: {
+            ...next.abilities,
+            slowTime: { cooldownMs: 0 },
+          },
+        };
+        next = pushEffect(next, {
+          x: powerup.x,
+          y: powerup.y,
+          label: "Slow Ready",
+          kind: "reward",
+          tone: EFFECT_TONE.info,
+          lifeMs: 680,
+        });
+        next = setToast(next, "Slow cooldown reset", "reward");
       }
     }
 
@@ -2889,16 +4262,28 @@ function applySuction(state: GameState, deltaMs: number) {
     };
   }
 
+  if (next.activeRogueBot) {
+    const rogueTouched =
+      Math.min(
+        distance(suctionPoint.x, suctionPoint.y, next.activeRogueBot.x, next.activeRogueBot.y),
+        distance(next.vacuumX, next.vacuumY, next.activeRogueBot.x, next.activeRogueBot.y),
+      ) <=
+      derived.vacuumRange * 0.78;
+
+    if (rogueTouched) {
+      return syncLevelUps(detonateRogueBot(next, next.activeRogueBot));
+    }
+  }
+
   if (next.activeBot) {
     const botTouched =
-      distance(next.vacuumX, next.vacuumY, next.activeBot.x, next.activeBot.y) <=
+      Math.min(
+        distance(suctionPoint.x, suctionPoint.y, next.activeBot.x, next.activeBot.y),
+        distance(next.vacuumX, next.vacuumY, next.activeBot.x, next.activeBot.y),
+      ) <=
       derived.vacuumRange * 0.78;
 
     if (botTouched) {
-      if (next.activeBot.kind === "rogue") {
-        return syncLevelUps(detonateRogueBot(next, next.activeBot));
-      }
-
       next = pushEffect(next, {
         x: next.activeBot.x,
         y: next.activeBot.y,
@@ -2932,7 +4317,6 @@ function tickBotShots(state: GameState, deltaMs: number) {
 function chooseTurretTarget(state: GameState, bot: SupportBot, range: number) {
   const priority: Record<DebrisKind, number> = {
     splatter: 5,
-    unstable: 4,
     corrosive: 3,
     tank: 3,
     heavy: 2,
@@ -2975,75 +4359,203 @@ function chooseScrapTarget(state: GameState, bot: SupportBot) {
   return candidates[0];
 }
 
-function spawnRogueFragments(state: GameState, bot: SupportBot) {
+function getRogueTargetPriority(debris: Debris) {
+  if (debris.kind === "tank" || debris.kind === "heavy") {
+    return 5;
+  }
+  if (debris.kind === "splatter") {
+    return 4;
+  }
+  if (debris.kind === "corrosive") {
+    return 3;
+  }
+  return 1;
+}
+
+function chooseRogueTarget(state: GameState, bot: SupportBot) {
+  const suctionSet = new Set(state.suctioningDebrisIds);
+  const candidates = state.debris
+    .filter((debris) => {
+      if (getDebrisMotionState(debris) !== "resting") {
+        return false;
+      }
+      if (suctionSet.has(debris.id)) {
+        return false;
+      }
+      if ((debris.rogueTargetLockUntilMs ?? 0) > state.elapsedMs) {
+        return false;
+      }
+      return distance(bot.x, bot.y, debris.x, debris.targetY) <= ROGUE_BOT_TARGET_RANGE;
+    })
+    .map((debris) => ({
+      debris,
+      priority: getRogueTargetPriority(debris),
+      distance: distance(bot.x, bot.y, debris.x, debris.targetY),
+    }));
+
+  if (candidates.length === 0) {
+    return { state, picked: undefined as (typeof candidates)[number] | undefined };
+  }
+
+  candidates.sort((a, b) => {
+    const priorityDelta = b.priority - a.priority;
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
+    return a.distance - b.distance;
+  });
+
+  if (bot.targetDebrisId) {
+    const lockedTarget = candidates.find((candidate) => candidate.debris.id === bot.targetDebrisId);
+    if (lockedTarget) {
+      return { state, picked: lockedTarget };
+    }
+  }
+
+  if (candidates.length === 1) {
+    return { state, picked: candidates[0] };
+  }
+
+  const varianceRoll = roll(state.rngSeed);
+  const alternateTarget =
+    candidates.find((candidate) => candidate.priority >= candidates[0].priority - 1 && candidate.debris.id !== candidates[0].debris.id) ??
+    candidates[1];
+
+  return {
+    state: {
+      ...state,
+      rngSeed: varianceRoll.seed,
+    },
+    picked:
+      varianceRoll.value < ROGUE_BOT_TARGET_VARIANCE_CHANCE && alternateTarget
+        ? alternateTarget
+        : candidates[0],
+  };
+}
+
+function getRogueReplacementCount(source: Debris) {
+  return source.kind === "normal" ? 3 : 2;
+}
+
+function spawnRogueReplacementDebris(state: GameState, source: Debris) {
   let next = state;
-  const fragments: Debris[] = [];
+  const replacements: Debris[] = [];
+  const spawnCount = getRogueReplacementCount(source);
+  const baseAngles = Array.from({ length: spawnCount }, (_, index) => (Math.PI * 2 * index) / spawnCount);
 
-  for (let index = 0; index < 2; index += 1) {
-    const offsetRoll = roll(next.rngSeed);
-    const yRoll = roll(offsetRoll.seed);
-    const ageRoll = roll(yRoll.seed);
-    const normalVariantRoll = getRandomNormalDebrisVariant(ageRoll.seed);
-    const x = clamp(bot.x + (offsetRoll.value - 0.5) * 12, 12, 88);
-    const targetY = clamp(bot.y + 8 + yRoll.value * 12, 18, 84);
-    const fallDurationMs = 900;
-    const ageMs = fallDurationMs * (0.45 + ageRoll.value * 0.2);
-    const hp = 0.7;
+  for (const angle of baseAngles) {
+    const radiusRoll = roll(next.rngSeed);
+    const angleRoll = roll(radiusRoll.seed);
+    const kindRoll = roll(angleRoll.seed);
+    const fallRoll = roll(kindRoll.seed);
+    const replacementKind: DebrisKind =
+      kindRoll.value < ROGUE_BOT_CORROSIVE_REPLACEMENT_CHANCE ? "corrosive" : "normal";
+    const variantRoll =
+      replacementKind === "normal" ? getRandomNormalDebrisVariant(fallRoll.seed) : undefined;
+    const speedRoll = getDebrisSpeedModifier(variantRoll?.seed ?? fallRoll.seed, replacementKind);
+    const hp =
+      getDebrisHp(replacementKind, Math.max(1, next.level)) *
+      getDifficultyMultipliers(next.difficulty).debrisHpMultiplier;
+    const radius = 4.5 + radiusRoll.value * 3.5;
+    const offsetAngle = angle + (angleRoll.value - 0.5) * 0.5;
+    const x = clamp(source.x + Math.cos(offsetAngle) * radius, 12, 88);
+    const targetY = clamp(source.targetY + Math.sin(offsetAngle) * radius, 18, 84);
+    const baseSpeed = Math.max(
+      DEBRIS_MIN_BASE_SPEED,
+      getDebrisBaseSpeed(replacementKind) * speedRoll.speedModifier,
+    );
+    const variationRoll = getDebrisVisualVariation(speedRoll.seed, replacementKind);
+    const scale = getDebrisScaleAssignment(variationRoll.seed, replacementKind);
+    const fallDurationMs = (320 + fallRoll.value * 180) / baseSpeed;
+    const spawnProgress = clamp((source.targetY + 12) / (targetY + 12), 0.72, 0.95);
+    const ageMs = Math.round(fallDurationMs * spawnProgress);
+    const driftDirection = x >= source.x ? 1 : -1;
 
-    fragments.push({
+    replacements.push({
       id: next.nextDebrisId,
-      kind: "normal",
-      isFragment: true,
-      ...createDebrisVisualState("normal", "flying", hp, hp, normalVariantRoll.variant),
+      kind: replacementKind,
+      speedModifier: speedRoll.speedModifier,
+      rogueTargetLockUntilMs: next.elapsedMs + ROGUE_BOT_REPLACEMENT_LOCK_MS,
+      ...createDebrisVisualState(replacementKind, "flying", hp, hp, variantRoll?.variant),
+      ...variationRoll.variation,
+      scale,
       x,
       targetY,
       hp,
       maxHp: hp,
       ageMs,
       fallDurationMs,
+      behavior: "drift",
+      driftVelocityX: driftDirection * (2.4 + fallRoll.value * 2.8),
     });
 
     next = {
       ...next,
-      rngSeed: normalVariantRoll.seed,
+      rngSeed: variationRoll.seed,
       nextDebrisId: next.nextDebrisId + 1,
     };
   }
 
   next = pushEffect(next, {
-    x: bot.x,
-    y: bot.y,
-    label: "Spit",
+    x: source.x,
+    y: source.targetY,
+    label: `x${spawnCount}`,
     kind: "danger",
     tone: EFFECT_TONE.danger,
-    lifeMs: 380,
+    lifeMs: 560,
   });
 
   return {
     ...next,
-    debris: [...next.debris, ...fragments],
+    debris: [...next.debris.filter((debris) => debris.id !== source.id), ...replacements],
+    activeRogueBot: next.activeRogueBot
+      ? {
+          ...next.activeRogueBot,
+          targetDebrisId: undefined,
+        }
+      : next.activeRogueBot,
   };
 }
 
-function tickActiveBot(state: GameState, deltaMs: number) {
-  if (!state.activeBot) {
+function setBotInSlot(
+  state: GameState,
+  slot: BotSlot,
+  bot: SupportBot | undefined,
+): GameState {
+  return slot === "rogue"
+    ? { ...state, activeRogueBot: bot }
+    : { ...state, activeBot: bot };
+}
+
+function tickBotInSlot(state: GameState, deltaMs: number, slot: BotSlot): GameState {
+  const currentBot = getActiveBotForSlot(state, slot);
+  if (!currentBot) {
     return state;
   }
 
+  let workingState = state;
   const derived = getDerivedStats(state);
   const deltaSeconds = deltaMs / 1000;
-  const payloadCooldownMs = Math.max(0, state.activeBot.payloadCooldownMs - deltaMs);
+  const payloadCooldownMs = Math.max(0, currentBot.payloadCooldownMs - deltaMs);
+  const frameDurationMs = getBotAnimationFrameDuration(currentBot.kind);
+  const animationTime = currentBot.animationTimer + deltaMs;
+  const advancedFrames = Math.floor(animationTime / frameDurationMs);
   let nextBot: SupportBot = {
-    ...state.activeBot,
-    x: state.activeBot.x + state.activeBot.velocityX * deltaSeconds,
-    y: state.activeBot.y + state.activeBot.velocityY * deltaSeconds,
-    ageMs: state.activeBot.ageMs + deltaMs,
-    fireCooldownMs: Math.max(0, state.activeBot.fireCooldownMs - deltaMs),
+    ...currentBot,
+    x: currentBot.x + currentBot.velocityX * deltaSeconds,
+    y: currentBot.y + currentBot.velocityY * deltaSeconds,
+    ageMs: currentBot.ageMs + deltaMs,
+    fireCooldownMs: Math.max(0, currentBot.fireCooldownMs - deltaMs),
     payloadCooldownMs,
+    animationFrameIndex:
+      advancedFrames > 0
+        ? (currentBot.animationFrameIndex + advancedFrames) % BOT_SPRITE_FRAME_COUNT
+        : currentBot.animationFrameIndex,
+    animationTimer: animationTime % frameDurationMs,
   };
 
-  if (state.activeBot.kind === "scrap") {
-    const target = chooseScrapTarget(state, state.activeBot);
+  if (currentBot.kind === "scrap") {
+    const target = chooseScrapTarget(state, currentBot);
     if (target) {
       const targetDistance = Math.max(0.001, target.distance);
       const moveDistance = Math.min(derived.scrapBotMoveSpeed * deltaSeconds, targetDistance);
@@ -3051,12 +4563,12 @@ function tickActiveBot(state: GameState, deltaMs: number) {
       nextBot = {
         ...nextBot,
         x: clamp(
-          state.activeBot.x + (target.debris.x - state.activeBot.x) * moveRatio,
+          currentBot.x + (target.debris.x - currentBot.x) * moveRatio,
           8,
           92,
         ),
         y: clamp(
-          state.activeBot.y + (target.debris.targetY - state.activeBot.y) * moveRatio,
+          currentBot.y + (target.debris.targetY - currentBot.y) * moveRatio,
           20,
           84,
         ),
@@ -3064,36 +4576,45 @@ function tickActiveBot(state: GameState, deltaMs: number) {
     } else {
       nextBot = {
         ...nextBot,
-        x: clamp(state.activeBot.x + state.activeBot.velocityX * deltaSeconds * 0.25, 8, 92),
+        x: clamp(currentBot.x + currentBot.velocityX * deltaSeconds * 0.25, 8, 92),
       };
     }
   }
 
-  if (state.activeBot.kind === "rogue") {
-    const wave = Math.sin(nextBot.ageMs / 220 + state.activeBot.wobblePhase);
-    const surge = Math.sin(nextBot.ageMs / 470 + state.activeBot.wobblePhase * 0.6);
-    nextBot = {
-      ...nextBot,
-      y: clamp(state.activeBot.baseY + wave * 7 + surge * 3, 22, 82),
-    };
+  if (currentBot.kind === "rogue") {
+    const targetResult = chooseRogueTarget(workingState, nextBot);
+    workingState = targetResult.state;
+    if (targetResult.picked) {
+      const targetDistance = Math.max(0.001, targetResult.picked.distance);
+      const moveDistance = Math.min(derived.rogueBotMoveSpeed * deltaSeconds, targetDistance);
+      const moveRatio = moveDistance / targetDistance;
+      const shiftedBaseY = clamp(targetResult.picked.debris.targetY, 24, 80);
+      nextBot = {
+        ...nextBot,
+        x: clamp(nextBot.x + (targetResult.picked.debris.x - nextBot.x) * moveRatio, 8, 92),
+        y: clamp(nextBot.y + (targetResult.picked.debris.targetY - nextBot.y) * moveRatio, 22, 82),
+        baseY: shiftedBaseY,
+        targetDebrisId: targetResult.picked.debris.id,
+      };
+    } else {
+      nextBot = {
+        ...nextBot,
+        x: clamp(currentBot.x + currentBot.velocityX * deltaSeconds * 0.25, 8, 92),
+        y: clamp(currentBot.baseY, 22, 82),
+        targetDebrisId: undefined,
+      };
+    }
   }
 
   if (nextBot.ageMs >= nextBot.lifeMs || nextBot.x < 6 || nextBot.x > 94) {
-    return isHelpfulBotKind(state.activeBot.kind)
+    return isHelpfulBotKind(currentBot.kind)
       ? maybeSpawnBotPowerup({
-          ...state,
-          activeBot: undefined,
-        }, state.activeBot)
-      : {
-          ...state,
-          activeBot: undefined,
-        };
+          ...setBotInSlot(workingState, slot, undefined),
+        }, currentBot)
+      : setBotInSlot(workingState, slot, undefined);
   }
 
-  let next: GameState = {
-    ...state,
-    activeBot: nextBot,
-  };
+  let next = setBotInSlot(workingState, slot, nextBot);
 
   if (nextBot.kind === "shield") {
     next = {
@@ -3123,6 +4644,7 @@ function tickActiveBot(state: GameState, deltaMs: number) {
     let dangerousClears = 0;
     const remaining: Debris[] = [];
     const splitFragments: Debris[] = [];
+    let resetPowerupSpawnedThisEvent = false;
 
     for (const debris of next.debris) {
       if (!affected.has(debris.id)) {
@@ -3132,11 +4654,15 @@ function tickActiveBot(state: GameState, deltaMs: number) {
 
       const hp = debris.hp - damage;
       if (hp > 0) {
-        remaining.push({ ...debris, hp });
+        remaining.push({
+          ...debris,
+          hp,
+          ...transitionDebrisVisualState(debris, debris.state, hp, debris.stateTimerMs),
+        });
         continue;
       }
 
-      const reward = getDebrisRewards(debris);
+      const reward = getDebrisRewards(next, debris);
       salvageGain += reward.salvage;
       xpGain += reward.xp;
       clears += 1;
@@ -3150,6 +4676,12 @@ function tickActiveBot(state: GameState, deltaMs: number) {
         tone: EFFECT_TONE.reward,
         lifeMs: 420,
       });
+      if (!resetPowerupSpawnedThisEvent) {
+        const resetPowerupState = maybeSpawnDebrisResetPowerup(next, debris);
+        resetPowerupSpawnedThisEvent =
+          resetPowerupState.nextPowerupId !== next.nextPowerupId;
+        next = resetPowerupState;
+      }
       const splitResult = maybeSpawnSplitFragments(next, debris);
       next = splitResult.state;
       splitFragments.push(...splitResult.fragments);
@@ -3171,19 +4703,33 @@ function tickActiveBot(state: GameState, deltaMs: number) {
   }
 
   if (nextBot.kind === "rogue") {
-    if (nextBot.payloadCooldownMs <= 0) {
-      next = spawnRogueFragments(next, nextBot);
-      const cooldownRoll = getRoguePayloadCooldown(next.rngSeed);
-      next = {
-        ...next,
-        rngSeed: cooldownRoll.seed,
-        activeBot: next.activeBot
+    const target = nextBot.targetDebrisId
+      ? next.debris.find((debris) => debris.id === nextBot.targetDebrisId)
+      : undefined;
+    const targetInRange =
+      target &&
+      getDebrisMotionState(target) === "resting" &&
+      (target.rogueTargetLockUntilMs ?? 0) <= next.elapsedMs &&
+      !next.suctioningDebrisIds.includes(target.id) &&
+      distance(nextBot.x, nextBot.y, target.x, target.targetY) <= derived.rogueBotActionRadius;
+
+    if (nextBot.payloadCooldownMs <= 0 && targetInRange) {
+      next = spawnRogueReplacementDebris(next, target);
+      const cooldownRoll = getRogueActionCooldown(next.rngSeed);
+      next = setBotInSlot(
+        {
+          ...next,
+          rngSeed: cooldownRoll.seed,
+        },
+        slot,
+        next.activeRogueBot
           ? {
-              ...next.activeBot,
+              ...next.activeRogueBot,
               payloadCooldownMs: cooldownRoll.delayMs,
+              targetDebrisId: undefined,
             }
           : undefined,
-      };
+      );
     }
     return next;
   }
@@ -3210,16 +4756,21 @@ function tickActiveBot(state: GameState, deltaMs: number) {
 
       const hp = debris.hp - derived.turretBotDamage;
       if (hp > 0) {
-        remaining.push({ ...debris, hp });
+        remaining.push({
+          ...debris,
+          hp,
+          ...transitionDebrisVisualState(debris, debris.state, hp, debris.stateTimerMs),
+        });
         continue;
       }
 
-      const reward = getDebrisRewards(debris);
+      const reward = getDebrisRewards(next, debris);
       salvageGain += reward.salvage;
       xpGain += reward.xp;
       clears += 1;
       if (isHeavyClassDebris(debris)) heavyClears += 1;
       if (isDangerousDebris(debris)) dangerousClears += 1;
+      next = maybeSpawnDebrisResetPowerup(next, debris);
       const splitResult = maybeSpawnSplitFragments(next, debris);
       next = splitResult.state;
       splitFragments.push(...splitResult.fragments);
@@ -3227,19 +4778,23 @@ function tickActiveBot(state: GameState, deltaMs: number) {
 
     next = {
       ...next,
-      activeBot: {
-        ...nextBot,
-        fireCooldownMs: derived.turretBotFireCooldownMs,
-      },
+      activeBot:
+        slot === "helpful"
+          ? {
+              ...nextBot,
+              fireCooldownMs: derived.turretBotFireCooldownMs,
+            }
+          : next.activeBot,
       debris: [...remaining, ...splitFragments],
       totalClears: next.totalClears + clears,
       heavyClears: next.heavyClears + heavyClears,
       dangerousClears: next.dangerousClears + dangerousClears,
     };
 
+    const shotOrigin = getBotShotOrigin(nextBot);
     next = pushBotShot(next, {
-      fromX: nextBot.x,
-      fromY: nextBot.y,
+      fromX: shotOrigin.x,
+      fromY: shotOrigin.y,
       toX: target.debris.x,
       toY: target.debris.targetY,
       lifeMs: 220,
@@ -3262,6 +4817,11 @@ function tickActiveBot(state: GameState, deltaMs: number) {
   return next;
 }
 
+function tickActiveBot(state: GameState, deltaMs: number) {
+  const afterHelpful = tickBotInSlot(state, deltaMs, "helpful");
+  return tickBotInSlot(afterHelpful, deltaMs, "rogue");
+}
+
 function applySlowTime(state: GameState) {
   const derived = getDerivedStats(state);
   let next = pushEffect(state, {
@@ -3276,6 +4836,7 @@ function applySlowTime(state: GameState) {
   next = {
     ...next,
     slowTimeMs: derived.slowDurationMs,
+    postSlowRecoveryMs: 0,
     abilities: {
       ...next.abilities,
       slowTime: { cooldownMs: derived.slowCooldownMs },
@@ -3301,9 +4862,17 @@ function applyNuke(state: GameState) {
   let clears = 0;
   let heavyClears = 0;
   let dangerousClears = 0;
+  let resetPowerupSpawnedThisEvent = false;
+  const destroyedRogueBot = Boolean(next.activeRogueBot ?? (next.activeBot?.kind === "rogue" ? next.activeBot : undefined));
+  const rogueBotPosition = destroyedRogueBot
+    ? {
+        x: next.activeRogueBot?.x ?? next.activeBot?.x ?? 50,
+        y: next.activeRogueBot?.y ?? next.activeBot?.y ?? 50,
+      }
+    : undefined;
 
   for (const debris of next.debris) {
-    const reward = getDebrisRewards(debris);
+    const reward = getDebrisRewards(next, debris);
     salvageGain += reward.salvage;
     xpGain += reward.xp;
     clears += 1;
@@ -3315,11 +4884,20 @@ function applyNuke(state: GameState) {
     if (isDangerousDebris(debris)) {
       dangerousClears += 1;
     }
+
+    if (!resetPowerupSpawnedThisEvent) {
+      const resetPowerupState = maybeSpawnDebrisResetPowerup(next, debris);
+      resetPowerupSpawnedThisEvent =
+        resetPowerupState.nextPowerupId !== next.nextPowerupId;
+      next = resetPowerupState;
+    }
   }
 
   next = {
     ...next,
     debris: [],
+    activeBot: next.activeBot?.kind === "rogue" ? undefined : next.activeBot,
+    activeRogueBot: destroyedRogueBot ? undefined : next.activeRogueBot,
     nukeFlashMs: 850,
     postNukeSlowMs: POST_NUKE_SLOW_DURATION_MS,
     clearRecoveryMs: derived.regenDelayMs,
@@ -3336,6 +4914,17 @@ function applyNuke(state: GameState) {
     next = applyClearRewards(next, salvageGain, xpGain, clears, 0, false);
   }
 
+  if (destroyedRogueBot) {
+    next = pushEffect(next, {
+      x: rogueBotPosition?.x ?? 50,
+      y: rogueBotPosition?.y ?? 50,
+      label: "Rogue Down",
+      kind: "danger",
+      tone: EFFECT_TONE.reward,
+      lifeMs: 520,
+    });
+  }
+
   next = setToast(next, clears > 0 ? "Board cleared" : "Nuke fired", "reward");
   return syncLevelUps(next);
 }
@@ -3344,19 +4933,34 @@ function updateGameplay(state: GameState, deltaMs: number) {
   const previousStage = getStageIndex(state.level);
   const nextElapsed = state.elapsedMs + deltaMs;
   const derived = getDerivedStats(state);
+  const flybyState = tickFlybyDebris(state, deltaMs);
+  const debrisSpeedMultiplier = getDebrisMovementMultiplier(nextElapsed);
   const pressureFactor = state.slowTimeMs > 0 ? derived.slowPressureMultiplier : 1;
   const pressureDelta = deltaMs * pressureFactor;
   const postNukeFallMultiplier = getPostNukeFallSpeedMultiplier(state.postNukeSlowMs);
+  const postSlowFallMultiplier = getPostSlowFallSpeedMultiplier(
+    state.postSlowRecoveryMs,
+    derived.slowPressureMultiplier,
+  );
+  const fallRecoveryMultiplier = Math.min(postNukeFallMultiplier, postSlowFallMultiplier);
   const followFactor = 1 - Math.pow(1 - derived.vacuumFollow, deltaMs / 16.67);
   const vacuumX = state.vacuumX + (state.vacuumTargetX - state.vacuumX) * followFactor;
   const vacuumY = state.vacuumY + (state.vacuumTargetY - state.vacuumY) * followFactor;
+  const nextSlowTimeMs = Math.max(0, state.slowTimeMs - deltaMs);
+  const nextPostSlowRecoveryMs =
+    state.slowTimeMs > 0 && nextSlowTimeMs <= 0
+      ? POST_EFFECT_RECOVERY_DURATION_MS
+      : Math.max(0, state.postSlowRecoveryMs - deltaMs);
 
   let next: GameState = {
     ...state,
+    rngSeed: flybyState.rngSeed,
     elapsedMs: nextElapsed,
-    slowTimeMs: Math.max(0, state.slowTimeMs - deltaMs),
+    slowTimeMs: nextSlowTimeMs,
+    postSlowRecoveryMs: nextPostSlowRecoveryMs,
     nukeFlashMs: Math.max(0, state.nukeFlashMs - deltaMs),
     postNukeSlowMs: Math.max(0, state.postNukeSlowMs - deltaMs),
+    debrisSpeedMultiplier,
     clearRecoveryMs: state.clearRecoveryMs,
     comboTimerMs: Math.max(0, state.comboTimerMs - deltaMs),
     comboCount: Math.max(0, state.comboTimerMs - deltaMs > 0 ? state.comboCount : 0),
@@ -3364,15 +4968,27 @@ function updateGameplay(state: GameState, deltaMs: number) {
     vacuumY,
     pickups: tickPickups(state, deltaMs),
     powerups: tickMovingPowerups(state, deltaMs),
+    capturedDebris: state.capturedDebris,
+    flybyDebris: flybyState.flybyDebris,
     activeBot: state.activeBot,
+    activeRogueBot: state.activeRogueBot,
     incomingBotWarning: state.incomingBotWarning
       ? {
           ...state.incomingBotWarning,
           ttlMs: state.incomingBotWarning.ttlMs - deltaMs,
         }
       : undefined,
+    incomingRogueBotWarning: state.incomingRogueBotWarning
+      ? {
+          ...state.incomingRogueBotWarning,
+          ttlMs: state.incomingRogueBotWarning.ttlMs - deltaMs,
+        }
+      : undefined,
     botShots: tickBotShots(state, deltaMs),
     effects: tickEffects(state, deltaMs),
+    transportDebris: tickVacuumTransportDebris(state, deltaMs),
+    flybySpawnCooldownMs: flybyState.flybySpawnCooldownMs,
+    nextFlybyDebrisId: flybyState.nextFlybyDebrisId,
     abilities: {
       slowTime: {
         cooldownMs: stepCooldown(state.abilities.slowTime.cooldownMs, deltaMs, 1),
@@ -3405,8 +5021,8 @@ function updateGameplay(state: GameState, deltaMs: number) {
     next.rogueBotCooldownMs <= 0 &&
     next.mode === "running" &&
     next.level >= ROGUE_BOT_MIN_LEVEL &&
-    !next.activeBot &&
-    !next.incomingBotWarning
+    !next.activeRogueBot &&
+    !next.incomingRogueBotWarning
   ) {
     next = planIncomingBot(next, "rogue");
   }
@@ -3427,6 +5043,15 @@ function updateGameplay(state: GameState, deltaMs: number) {
 
   if (
     next.mode === "running" &&
+    next.incomingRogueBotWarning &&
+    next.incomingRogueBotWarning.ttlMs <= 0 &&
+    !next.activeRogueBot
+  ) {
+    next = spawnActiveBot(next, next.incomingRogueBotWarning);
+  }
+
+  if (
+    next.mode === "running" &&
     next.incomingBotWarning &&
     next.incomingBotWarning.ttlMs <= 0 &&
     !next.activeBot
@@ -3435,26 +5060,31 @@ function updateGameplay(state: GameState, deltaMs: number) {
   }
 
   next = applySuction(next, deltaMs);
+  next = tickVacuumCaptureDebris(next, deltaMs);
 
   let totalDamage = 0;
   const remaining: Debris[] = [];
   const splatterBursts: Debris[] = [];
   let restingDebrisBurden = 0;
+  let landingVariantSeed = next.rngSeed;
 
   for (const debris of next.debris) {
-    const stats = DEBRIS_STATS[debris.kind];
-    const stabilizerSlow =
-      next.activeBot?.kind === "stabilizer" &&
-      distance(next.activeBot.x, next.activeBot.y, debris.x, debris.targetY) <= derived.stabilizerRadius
-        ? derived.stabilizerFallMultiplier
-        : 1;
     const motionState = getDebrisMotionState(debris);
+    const wasRestingState = motionState === "resting";
     const adjustedPressureDelta =
-      motionState === "falling" ? pressureDelta * stabilizerSlow * postNukeFallMultiplier : pressureDelta;
+      motionState === "falling"
+        ? pressureDelta * fallRecoveryMultiplier * next.debrisSpeedMultiplier
+        : pressureDelta;
     const ageMs = debris.ageMs + adjustedPressureDelta;
     const landed = getDebrisMotionState({ ...debris, ageMs }) === "resting";
     const nextState =
-      debris.state === "exploding" ? "exploding" : landed ? "resting" : "flying";
+      debris.state === "exploding"
+        ? "exploding"
+        : landed
+          ? debris.kind === "tank"
+            ? getTankDebrisStateFromHealth(debris.hp, debris.maxHp)
+            : "resting"
+          : "flying";
     const stateTimerMs =
       nextState === "flying"
         ? 0
@@ -3465,31 +5095,47 @@ function updateGameplay(state: GameState, deltaMs: number) {
       debris.kind === "splatter" &&
       nextState === "resting" &&
       stateTimerMs >= SPLATTER_DELAY_MS;
+    const isRestingState = isRestingDebrisState(nextState);
+    const startingLandingSettle = isRestingState && !wasRestingState;
     const driftedX =
-      debris.behavior === "drift" && nextState !== "resting"
+      debris.behavior === "drift" && !isRestingState
         ? clamp(debris.x + (debris.driftVelocityX ?? 0) * (adjustedPressureDelta / 1000), 12, 88)
         : debris.x;
+    const landingDurationMs = debris.landingDurationMs || getDebrisLandingDurationMs(debris.kind);
+    const landingTimerMs = isRestingState
+      ? wasRestingState
+        ? Math.min(landingDurationMs, debris.landingTimerMs + deltaMs)
+        : 0
+      : 0;
+    const landingVariantRoll = startingLandingSettle
+      ? rollDebrisLandingVariant(landingVariantSeed)
+      : undefined;
+    const landingVariant = landingVariantRoll?.landingVariant ?? debris.landingVariant;
+    landingVariantSeed = landingVariantRoll?.seed ?? landingVariantSeed;
+    const landingUsesShieldSettle = startingLandingSettle
+      ? next.shield > 0
+      : debris.landingUsesShieldSettle;
+    const usesPrecomposedShieldRestingSprite =
+      Boolean(debris.shieldRestingSprite) && landingUsesShieldSettle;
+    const shieldPoolEffectRoll =
+      startingLandingSettle && landingUsesShieldSettle && !usesPrecomposedShieldRestingSprite
+        ? rollShieldPoolEffect(landingVariantSeed)
+        : undefined;
+    landingVariantSeed = shieldPoolEffectRoll?.seed ?? landingVariantSeed;
+    const shieldPoolVariant = shieldPoolEffectRoll?.shieldPoolVariant ?? debris.shieldPoolVariant;
+    const shieldPoolScaleJitter = shieldPoolEffectRoll?.shieldPoolScaleJitter ?? debris.shieldPoolScaleJitter;
+    const shieldPoolRotationDeg = shieldPoolEffectRoll?.shieldPoolRotationDeg ?? debris.shieldPoolRotationDeg;
+    const shieldPoolOpacityJitter = shieldPoolEffectRoll?.shieldPoolOpacityJitter ?? debris.shieldPoolOpacityJitter;
+    const shieldPoolPulseJitter = shieldPoolEffectRoll?.shieldPoolPulseJitter ?? debris.shieldPoolPulseJitter;
+    const shieldPoolTimerMs =
+      isRestingState && landingUsesShieldSettle && !usesPrecomposedShieldRestingSprite
+        ? startingLandingSettle
+          ? 0
+          : Math.min(SHIELD_NEW_POOL_EFFECT_DURATION_MS, debris.shieldPoolTimerMs + deltaMs)
+        : 0;
 
-    if (nextState === "resting" && !shouldStartSplatterExplosion) {
+    if (isRestingState && !shouldStartSplatterExplosion) {
       restingDebrisBurden += getDebrisRestingBurden(debris);
-    }
-
-    if (
-      debris.kind === "unstable" &&
-      landed &&
-      stats.fuseMs &&
-      ageMs - debris.fallDurationMs >= stats.fuseMs
-    ) {
-      totalDamage += stats.explosionDamage ?? 0;
-      next = pushEffect(next, {
-        x: debris.x,
-        y: debris.targetY,
-        label: "Burst",
-        kind: "danger",
-        tone: EFFECT_TONE.danger,
-        lifeMs: 560,
-      });
-      continue;
     }
 
     if (
@@ -3508,7 +5154,22 @@ function updateGameplay(state: GameState, deltaMs: number) {
         ...debris,
         ageMs,
         x: driftedX,
-        ...transitionDebrisVisualState(debris, "exploding", debris.hp, 0),
+        ...transitionDebrisVisualState(
+          debris,
+          "exploding",
+          debris.hp,
+          0,
+          landingTimerMs,
+          landingDurationMs,
+          landingVariant,
+          landingUsesShieldSettle,
+          shieldPoolTimerMs,
+          shieldPoolVariant,
+          shieldPoolScaleJitter,
+          shieldPoolRotationDeg,
+          shieldPoolOpacityJitter,
+          shieldPoolPulseJitter,
+        ),
       });
       continue;
     }
@@ -3517,12 +5178,28 @@ function updateGameplay(state: GameState, deltaMs: number) {
       ...debris,
       ageMs,
       x: driftedX,
-      ...transitionDebrisVisualState(debris, nextState, debris.hp, stateTimerMs),
-    });
+        ...transitionDebrisVisualState(
+          debris,
+          nextState,
+          debris.hp,
+          stateTimerMs,
+          landingTimerMs,
+          landingDurationMs,
+          landingVariant,
+          landingUsesShieldSettle,
+          shieldPoolTimerMs,
+          shieldPoolVariant,
+          shieldPoolScaleJitter,
+          shieldPoolRotationDeg,
+          shieldPoolOpacityJitter,
+          shieldPoolPulseJitter,
+        ),
+      });
   }
 
   next = {
     ...next,
+    rngSeed: landingVariantSeed,
     debris: [...remaining, ...splatterBursts],
     spawnCooldownMs: next.spawnCooldownMs - pressureDelta,
   };
@@ -3628,14 +5305,26 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return state;
       }
       if (state.pendingLevelChoices > 0) {
+        const flybyState = tickFlybyDebris(state, action.deltaMs);
         const effects = tickEffects(state, action.deltaMs);
+        const transportState = tickVacuumCaptureDebris(
+          {
+            ...state,
+            rngSeed: flybyState.rngSeed,
+            flybyDebris: flybyState.flybyDebris,
+            flybySpawnCooldownMs: flybyState.flybySpawnCooldownMs,
+            nextFlybyDebrisId: flybyState.nextFlybyDebrisId,
+            transportDebris: tickVacuumTransportDebris(state, action.deltaMs),
+          },
+          action.deltaMs,
+        );
         const toast =
           state.toast && state.toast.ttlMs - action.deltaMs > 0
             ? { ...state.toast, ttlMs: state.toast.ttlMs - action.deltaMs }
             : undefined;
 
         return {
-          ...state,
+          ...transportState,
           effects,
           toast,
         };
